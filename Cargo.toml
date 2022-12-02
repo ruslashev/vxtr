@@ -4,3 +4,9 @@ version = "0.0.0"
 edition = "2021"
 
 [dependencies]
+
+[profile.release]
+debug = true
+
+[build-dependencies]
+bindgen = "0.61.0"
