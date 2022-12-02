@@ -1,0 +1,4 @@
+newline_style = "Unix"
+chain_width = 90
+fn_call_width = 90
+single_line_if_else_max_width = 60
