@@ -1,6 +1,9 @@
+#![allow(clippy::wildcard_imports)]
+
 use window::Window;
 use state::State;
 
+mod bindings;
 mod window;
 mod state;
 
