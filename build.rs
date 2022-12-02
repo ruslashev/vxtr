@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 fn main() {
     println!("cargo:rustc-link-lib=glfw");
+    println!("cargo:rustc-link-lib=vulkan");
 
     let header = "\
     #define GLFW_INCLUDE_NONE\n\
