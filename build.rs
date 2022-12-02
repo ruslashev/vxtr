@@ -17,9 +17,24 @@ fn main() {
         .generate_comments(false)
         .layout_tests(false)
         .merge_extern_blocks(true)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks))
+        .parse_callbacks(Box::new(SignedIntMacros))
         .generate()
         .expect("failed to generate bindings")
         .write_to_file(output_file)
         .expect("failed to write bindings");
+}
+
+/// A modification to `bindgen::CargoCallbacks` that selects integer macros' type to be `i32`
+/// when possible. Otherwise they would be `u32`, which is incompatible with `int`s (`i32`).
+#[derive(Debug)]
+pub struct SignedIntMacros;
+
+impl bindgen::callbacks::ParseCallbacks for SignedIntMacros {
+    fn int_macro(&self, _name: &str, value: i64) -> Option<bindgen::callbacks::IntKind> {
+        if value >= i32::MIN.into() && value <= i32::MAX.into() {
+            Some(bindgen::callbacks::IntKind::I32)
+        } else {
+            None // default
+        }
+    }
 }
