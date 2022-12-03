@@ -1,0 +1,11 @@
+[package]
+name = "vulkan_tutorial"
+version = "0.0.0"
+edition = "2021"
+
+[[bin]]
+name = "vulkan_tutorial"
+path = "main.rs"
+
+[dependencies]
+glfw_sys = { path = "../lib/glfw_sys" }

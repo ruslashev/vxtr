@@ -1,4 +1,5 @@
-use crate::bindings::*;
+use glfw_sys::*;
+
 use std::ffi::CString;
 use std::ptr;
 

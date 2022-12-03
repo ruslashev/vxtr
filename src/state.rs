@@ -1,8 +1,9 @@
+use glfw_sys::*;
+
 use std::ffi::{c_char, CStr};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::bindings::*;
 use crate::window::Window;
 
 macro_rules! c_str {

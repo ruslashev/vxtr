@@ -1,12 +1,9 @@
-[package]
-name = "vulkan_tutorial"
-version = "0.0.0"
-edition = "2021"
+[workspace]
+members = ["lib/*", "src"]
 
-[dependencies]
+[profile.dev]
+opt-level = 1
 
 [profile.release]
 debug = true
-
-[build-dependencies]
-bindgen = "0.61.0"
+overflow-checks = true

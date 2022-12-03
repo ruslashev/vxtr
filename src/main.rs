@@ -3,7 +3,6 @@
 use state::State;
 use window::Window;
 
-mod bindings;
 mod state;
 mod window;
 
