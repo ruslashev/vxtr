@@ -2,6 +2,7 @@
 #![allow(clippy::cast_lossless)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::default_trait_access)]
+#![allow(clippy::must_use_candidate)]
 #![allow(clippy::semicolon_if_nothing_returned)]
 #![allow(clippy::unreadable_literal)]
 #![allow(clippy::upper_case_acronyms)]
