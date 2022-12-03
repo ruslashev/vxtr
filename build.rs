@@ -20,6 +20,7 @@ fn main() {
         .layout_tests(false)
         .merge_extern_blocks(true)
         .parse_callbacks(Box::new(SignedIntMacros))
+        .prepend_enum_name(false)
         .generate()
         .expect("failed to generate bindings")
         .write_to_file(output_file)
