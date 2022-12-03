@@ -1,11 +1,11 @@
 #![allow(clippy::wildcard_imports)]
 
-use window::Window;
 use state::State;
+use window::Window;
 
 mod bindings;
-mod window;
 mod state;
+mod window;
 
 fn main() {
     let window = Window::new(800, 600, "Vulkan tutorial");
