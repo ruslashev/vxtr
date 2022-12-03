@@ -13,6 +13,10 @@ macro_rules! c_str {
     }};
 }
 
+trait CheckVkError {
+    fn check_err(self, action: &'static str);
+}
+
 pub struct State {
     window: Window,
     instance: VkInstance,
@@ -37,6 +41,12 @@ impl Drop for State {
         unsafe {
             vkDestroyInstance(self.instance, ptr::null());
         }
+    }
+}
+
+impl CheckVkError for VkResult {
+    fn check_err(self, action: &'static str) {
+        assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
     }
 }
 
@@ -121,8 +131,8 @@ fn create_instance() -> VkInstance {
     let mut instance = MaybeUninit::<VkInstance>::uninit();
 
     unsafe {
-        let status = vkCreateInstance(&create_info, ptr::null(), instance.as_mut_ptr());
-        assert!(status == VK_SUCCESS, "failed to create instance");
+        vkCreateInstance(&create_info, ptr::null(), instance.as_mut_ptr())
+            .check_err("create instance");
 
         instance.assume_init()
     }
