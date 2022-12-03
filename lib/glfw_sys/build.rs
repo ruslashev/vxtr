@@ -14,7 +14,6 @@ fn main() {
 
     bindgen::Builder::default()
         .header_contents("wrapper.h", header)
-        .derive_debug(false)
         .derive_default(true)
         .generate_comments(false)
         .layout_tests(false)
