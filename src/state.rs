@@ -20,6 +20,8 @@ trait CheckVkError {
 pub struct State {
     window: Window,
     instance: VkInstance,
+    device: VkDevice,
+    gfx_queue: VkQueue,
 }
 
 #[allow(unused)]
@@ -35,11 +37,19 @@ struct QueueFamilies {
 impl State {
     pub fn new(window: Window) -> Self {
         let instance = create_instance();
-        let device = get_phys_device(instance);
+        let phys_device = get_phys_device(instance);
+        let queue_families = get_queue_families(phys_device);
+        let device = create_logical_device(phys_device, &queue_families);
+        let gfx_queue = get_graphics_queue(device, &queue_families);
 
-        println!("Chosen device name: {:?}", get_device_name(device));
+        println!("Chosen device name: {:?}", get_device_name(phys_device));
 
-        Self { window, instance }
+        Self {
+            window,
+            instance,
+            device,
+            gfx_queue,
+        }
     }
 
     pub fn main_loop(&mut self) {
@@ -52,6 +62,7 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            vkDestroyDevice(self.device, ptr::null());
             vkDestroyInstance(self.instance, ptr::null());
         }
     }
@@ -100,6 +111,10 @@ fn get_validation_layers() -> Vec<CString> {
     required_names.into_iter().map(|name| CString::new(name).unwrap()).collect()
 }
 
+fn convert_to_c_ptrs(cstrings: &[CString]) -> Vec<*const c_char> {
+    cstrings.iter().map(|cstring| cstring.as_c_str().as_ptr()).collect()
+}
+
 fn make_vk_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
@@ -142,8 +157,7 @@ fn create_instance() -> VkInstance {
     };
 
     let layers = get_validation_layers();
-    let c_ptrs =
-        layers.iter().map(|cstring| cstring.as_c_str().as_ptr()).collect::<Vec<*const c_char>>();
+    let c_ptrs = convert_to_c_ptrs(&layers);
 
     if cfg!(debug_assertions) {
         create_info.enabledLayerCount = c_ptrs.len().try_into().unwrap();
@@ -253,7 +267,7 @@ fn get_queue_families(device: VkPhysicalDevice) -> QueueFamilies {
     };
 
     for (i, f) in family_properties.iter().enumerate() {
-        let idx = Some(i as u32);
+        let idx = Some(i.try_into().unwrap());
 
         if f.queueFlags & VK_QUEUE_GRAPHICS_BIT != 0 {
             families.graphics = idx;
@@ -273,6 +287,57 @@ fn get_queue_families(device: VkPhysicalDevice) -> QueueFamilies {
     }
 
     families
+}
+
+fn create_logical_device(
+    phys_device: VkPhysicalDevice,
+    queue_families: &QueueFamilies,
+) -> VkDevice {
+    let queue_priority = 1.0;
+
+    let queue_create_info = VkDeviceQueueCreateInfo {
+        sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        queueFamilyIndex: queue_families.graphics.unwrap(),
+        queueCount: 1,
+        pQueuePriorities: &queue_priority,
+        ..Default::default()
+    };
+
+    let enabled_features = VkPhysicalDeviceFeatures::default();
+
+    let mut create_info = VkDeviceCreateInfo {
+        sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        pQueueCreateInfos: &queue_create_info,
+        queueCreateInfoCount: 1,
+        pEnabledFeatures: &enabled_features,
+        ..Default::default()
+    };
+
+    let layers = get_validation_layers();
+    let c_ptrs = convert_to_c_ptrs(&layers);
+
+    if cfg!(debug_assertions) {
+        create_info.enabledLayerCount = c_ptrs.len().try_into().unwrap();
+        create_info.ppEnabledLayerNames = c_ptrs.as_ptr();
+    }
+
+    let mut device = MaybeUninit::<VkDevice>::uninit();
+
+    unsafe {
+        vkCreateDevice(phys_device, &create_info, ptr::null(), device.as_mut_ptr())
+            .check_err("create logical device");
+
+        device.assume_init()
+    }
+}
+
+fn get_graphics_queue(device: VkDevice, queue_families: &QueueFamilies) -> VkQueue {
+    let mut queue = MaybeUninit::<VkQueue>::uninit();
+
+    unsafe {
+        vkGetDeviceQueue(device, queue_families.graphics.unwrap(), 0, queue.as_mut_ptr());
+        queue.assume_init()
+    }
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
