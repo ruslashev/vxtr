@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 
@@ -40,6 +40,43 @@ impl Drop for State {
     }
 }
 
+fn get_validation_layers() -> Vec<CString> {
+    let supported_layers = unsafe {
+        let mut count = 0;
+        vkEnumerateInstanceLayerProperties(&mut count, ptr::null_mut());
+
+        let mut layers = Vec::with_capacity(count as usize);
+        layers.resize(count as usize, VkLayerProperties::default());
+
+        vkEnumerateInstanceLayerProperties(&mut count, layers.as_mut_ptr());
+
+        layers
+    };
+
+    let required_names = vec!["VK_LAYER_KHRONOS_validation"];
+
+    print_validation_layers(&supported_layers);
+
+    // Ensure all required validation layers are supported
+    for req_name in &required_names {
+        let mut supported = false;
+
+        for supp_layer in &supported_layers {
+            let cstr = unsafe { CStr::from_ptr(supp_layer.layerName.as_ptr()) };
+            let name = cstr.to_str().expect("invalid layer name");
+
+            if req_name == &name {
+                supported = true;
+                break;
+            }
+        }
+
+        assert!(supported, "Required validation layer not found: {:?}", req_name);
+    }
+
+    required_names.into_iter().map(|name| CString::new(name).unwrap()).collect()
+}
+
 fn make_vk_version(major: u32, minor: u32, patch: u32) -> u32 {
     (major << 22) | (minor << 12) | patch
 }
@@ -64,13 +101,22 @@ fn create_instance() -> VkInstance {
 
     print_extensions(extension_count, extension_names);
 
-    let create_info = VkInstanceCreateInfo {
+    let mut create_info = VkInstanceCreateInfo {
         sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         pApplicationInfo: &app_info,
         enabledExtensionCount: extension_count,
         ppEnabledExtensionNames: extension_names,
         ..Default::default()
     };
+
+    let layers = get_validation_layers();
+    let c_ptrs =
+        layers.iter().map(|cstring| cstring.as_c_str().as_ptr()).collect::<Vec<*const c_char>>();
+
+    if cfg!(debug_assertions) {
+        create_info.enabledLayerCount = c_ptrs.len().try_into().unwrap();
+        create_info.ppEnabledLayerNames = c_ptrs.as_ptr();
+    }
 
     let mut instance = MaybeUninit::<VkInstance>::uninit();
 
@@ -90,6 +136,16 @@ fn print_extensions(count: u32, names: *mut *const c_char) {
             let ptr = names.add(i as usize).read();
             CStr::from_ptr(ptr)
         };
+
+        println!("\t{:?}", cstr);
+    }
+}
+
+fn print_validation_layers(layers: &[VkLayerProperties]) {
+    println!("Validation layers:");
+
+    for layer in layers {
+        let cstr = unsafe { CStr::from_ptr(layer.layerName.as_ptr()) };
 
         println!("\t{:?}", cstr);
     }
