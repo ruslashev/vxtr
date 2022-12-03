@@ -22,6 +22,16 @@ pub struct State {
     instance: VkInstance,
 }
 
+#[allow(unused)]
+#[derive(Default)]
+struct QueueFamilies {
+    graphics: Option<u32>,
+    compute: Option<u32>,
+    transfer: Option<u32>,
+    sparse_binding: Option<u32>,
+    protected: Option<u32>,
+}
+
 impl State {
     pub fn new(window: Window) -> Self {
         let instance = create_instance();
@@ -187,8 +197,10 @@ fn choose_phys_device(devices: &[VkPhysicalDevice]) -> VkPhysicalDevice {
     ];
 
     for type_ in type_priorities {
-        if let Some(dev) = first_device_of_type(&devices_and_types, type_) {
-            return dev;
+        if let Some(device) = first_device_of_type(&devices_and_types, type_) {
+            if get_queue_families(device).graphics.is_some() {
+                return device;
+            }
         }
     }
 
@@ -223,6 +235,44 @@ fn get_device_name(device: VkPhysicalDevice) -> String {
     let cstr = unsafe { CStr::from_ptr(properties.deviceName.as_ptr()) };
 
     cstr.to_str().expect("invalid device name").to_string()
+}
+
+fn get_queue_families(device: VkPhysicalDevice) -> QueueFamilies {
+    let mut families = QueueFamilies::default();
+
+    let family_properties = unsafe {
+        let mut count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &mut count, ptr::null_mut());
+
+        let mut families = Vec::with_capacity(count as usize);
+        families.resize(count as usize, VkQueueFamilyProperties::default());
+
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &mut count, families.as_mut_ptr());
+
+        families
+    };
+
+    for (i, f) in family_properties.iter().enumerate() {
+        let idx = Some(i as u32);
+
+        if f.queueFlags & VK_QUEUE_GRAPHICS_BIT != 0 {
+            families.graphics = idx;
+        }
+        if f.queueFlags & VK_QUEUE_COMPUTE_BIT != 0 {
+            families.compute = idx;
+        }
+        if f.queueFlags & VK_QUEUE_TRANSFER_BIT != 0 {
+            families.transfer = idx;
+        }
+        if f.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT != 0 {
+            families.sparse_binding = idx;
+        }
+        if f.queueFlags & VK_QUEUE_PROTECTED_BIT != 0 {
+            families.protected = idx;
+        }
+    }
+
+    families
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
