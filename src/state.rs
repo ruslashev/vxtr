@@ -74,7 +74,7 @@ impl CheckVkError for VkResult {
     }
 }
 
-fn get_validation_layers() -> Vec<CString> {
+fn get_validation_layers(verbose: bool) -> Vec<CString> {
     let supported_layers = unsafe {
         let mut count = 0;
         vkEnumerateInstanceLayerProperties(&mut count, ptr::null_mut());
@@ -87,9 +87,11 @@ fn get_validation_layers() -> Vec<CString> {
         layers
     };
 
-    let required_names = vec!["VK_LAYER_KHRONOS_validation"];
+    if verbose {
+        print_validation_layers(&supported_layers);
+    }
 
-    print_validation_layers(&supported_layers);
+    let required_names = vec!["VK_LAYER_KHRONOS_validation"];
 
     // Ensure all required validation layers are supported
     for req_name in &required_names {
@@ -156,7 +158,7 @@ fn create_instance() -> VkInstance {
         ..Default::default()
     };
 
-    let layers = get_validation_layers();
+    let layers = get_validation_layers(true);
     let c_ptrs = convert_to_c_ptrs(&layers);
 
     if cfg!(debug_assertions) {
@@ -313,7 +315,7 @@ fn create_logical_device(
         ..Default::default()
     };
 
-    let layers = get_validation_layers();
+    let layers = get_validation_layers(false);
     let c_ptrs = convert_to_c_ptrs(&layers);
 
     if cfg!(debug_assertions) {
