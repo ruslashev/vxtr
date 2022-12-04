@@ -452,9 +452,9 @@ fn get_queue_create_infos(queue_families: &QueueFamilies) -> Vec<VkDeviceQueueCr
     unique_families.sort_unstable();
     unique_families.dedup();
 
-    let priority = 1.0;
-
     for queue_family in unique_families {
+        let priority = 1.0;
+
         let create_info = VkDeviceQueueCreateInfo {
             sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             queueFamilyIndex: queue_family,
