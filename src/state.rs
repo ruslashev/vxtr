@@ -257,7 +257,7 @@ fn is_device_suitable(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
 }
 
 fn supports_required_extensions(device: VkPhysicalDevice) -> bool {
-    let required_extensions = [VK_KHR_SWAPCHAIN_EXTENSION_NAME];
+    let required_extensions = get_required_extensions();
 
     let mut support_found = Vec::with_capacity(required_extensions.len());
     support_found.resize(required_extensions.len(), false);
@@ -265,18 +265,25 @@ fn supports_required_extensions(device: VkPhysicalDevice) -> bool {
     let supported_extensions = get_supported_extensions(device);
 
     for (i, req_ext) in required_extensions.into_iter().enumerate() {
-        let req = CStr::from_bytes_with_nul(req_ext).unwrap();
-
         for supp_ext in &supported_extensions {
             let supp = unsafe { CStr::from_ptr(supp_ext.extensionName.as_ptr()) };
 
-            if supp == req {
+            if supp == req_ext.as_c_str() {
                 support_found[i] = true;
             }
         }
     }
 
     support_found.into_iter().all(|found| found)
+}
+
+fn get_required_extensions() -> Vec<CString> {
+    let required_extensions = [VK_KHR_SWAPCHAIN_EXTENSION_NAME];
+
+    required_extensions
+        .into_iter()
+        .map(|arr| CString::from_vec_with_nul(arr.to_vec()).unwrap())
+        .collect()
 }
 
 fn get_supported_extensions(device: VkPhysicalDevice) -> Vec<VkExtensionProperties> {
@@ -380,11 +387,16 @@ fn create_logical_device(
 
     let enabled_features = VkPhysicalDeviceFeatures::default();
 
+    let required_extensions = get_required_extensions();
+    let req_exts_c_ptrs = convert_to_c_ptrs(&required_extensions);
+
     let mut create_info = VkDeviceCreateInfo {
         sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         pEnabledFeatures: &enabled_features,
         queueCreateInfoCount: queue_create_infos.len().try_into().unwrap(),
         pQueueCreateInfos: queue_create_infos.as_ptr(),
+        enabledExtensionCount: req_exts_c_ptrs.len().try_into().unwrap(),
+        ppEnabledExtensionNames: req_exts_c_ptrs.as_ptr(),
         ..Default::default()
     };
 
