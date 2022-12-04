@@ -26,7 +26,6 @@ pub struct State {
     present_queue: VkQueue,
 }
 
-#[allow(unused)]
 #[derive(Default)]
 struct QueueFamilies {
     graphics: Option<u32>,
@@ -35,6 +34,13 @@ struct QueueFamilies {
     sparse_binding: Option<u32>,
     protected: Option<u32>,
     present: Option<u32>,
+}
+
+#[derive(Default)]
+struct SwapchainSupportDetails {
+    capabilities: VkSurfaceCapabilitiesKHR,
+    formats: Vec<VkSurfaceFormatKHR>,
+    present_modes: Vec<VkPresentModeKHR>,
 }
 
 impl State {
@@ -250,10 +256,15 @@ fn first_device_of_type(
 
 fn is_device_suitable(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
     let queue_families = get_queue_families(device, surface);
+    let extensions_supported = supports_required_extensions(device);
+    let swapchain_adequate = if extensions_supported {
+        let swapchain_support = query_swapchain_support(device, surface);
+        !swapchain_support.formats.is_empty() && !swapchain_support.present_modes.is_empty()
+    } else {
+        false
+    };
 
-    queue_families.graphics.is_some()
-        && queue_families.present.is_some()
-        && supports_required_extensions(device)
+    queue_families.graphics.is_some() && queue_families.present.is_some() && swapchain_adequate
 }
 
 fn supports_required_extensions(device: VkPhysicalDevice) -> bool {
@@ -453,6 +464,53 @@ fn get_queue_for_family_idx(device: VkDevice, family_idx: u32) -> VkQueue {
         vkGetDeviceQueue(device, family_idx, 0, queue.as_mut_ptr());
         queue.assume_init()
     }
+}
+
+fn query_swapchain_support(
+    device: VkPhysicalDevice,
+    surface: VkSurfaceKHR,
+) -> SwapchainSupportDetails {
+    let mut details = SwapchainSupportDetails::default();
+
+    unsafe {
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &mut details.capabilities)
+            .check_err("get physical device surface capabilities");
+    }
+
+    details.formats = unsafe {
+        let mut count = 0;
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &mut count, ptr::null_mut());
+
+        let mut formats = Vec::new();
+
+        if count > 0 {
+            formats.resize(count as usize, VkSurfaceFormatKHR::default());
+            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &mut count, formats.as_mut_ptr());
+        }
+
+        formats
+    };
+
+    details.present_modes = unsafe {
+        let mut count = 0;
+        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &mut count, ptr::null_mut());
+
+        let mut modes = Vec::new();
+
+        if count > 0 {
+            modes.resize(count as usize, VkPresentModeKHR::default());
+            vkGetPhysicalDeviceSurfacePresentModesKHR(
+                device,
+                surface,
+                &mut count,
+                modes.as_mut_ptr(),
+            );
+        }
+
+        modes
+    };
+
+    details
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
