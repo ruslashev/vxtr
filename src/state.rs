@@ -23,6 +23,7 @@ pub struct State {
     surface: VkSurfaceKHR,
     device: VkDevice,
     gfx_queue: VkQueue,
+    present_queue: VkQueue,
 }
 
 #[allow(unused)]
@@ -43,7 +44,8 @@ impl State {
         let phys_device = get_phys_device(instance, surface);
         let queue_families = get_queue_families(phys_device, surface);
         let device = create_logical_device(phys_device, &queue_families);
-        let gfx_queue = get_graphics_queue(device, &queue_families);
+        let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
+        let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -53,6 +55,7 @@ impl State {
             surface,
             device,
             gfx_queue,
+            present_queue,
         }
     }
 
@@ -323,23 +326,15 @@ fn create_logical_device(
     phys_device: VkPhysicalDevice,
     queue_families: &QueueFamilies,
 ) -> VkDevice {
-    let queue_priority = 1.0;
-
-    let queue_create_info = VkDeviceQueueCreateInfo {
-        sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        queueFamilyIndex: queue_families.graphics.unwrap(),
-        queueCount: 1,
-        pQueuePriorities: &queue_priority,
-        ..Default::default()
-    };
+    let queue_create_infos = get_queue_create_infos(queue_families);
 
     let enabled_features = VkPhysicalDeviceFeatures::default();
 
     let mut create_info = VkDeviceCreateInfo {
         sType: VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        pQueueCreateInfos: &queue_create_info,
-        queueCreateInfoCount: 1,
         pEnabledFeatures: &enabled_features,
+        queueCreateInfoCount: queue_create_infos.len().try_into().unwrap(),
+        pQueueCreateInfos: queue_create_infos.as_ptr(),
         ..Default::default()
     };
 
@@ -361,11 +356,39 @@ fn create_logical_device(
     }
 }
 
-fn get_graphics_queue(device: VkDevice, queue_families: &QueueFamilies) -> VkQueue {
+fn get_queue_create_infos(queue_families: &QueueFamilies) -> Vec<VkDeviceQueueCreateInfo> {
+    let mut queue_create_infos = Vec::new();
+
+    let mut unique_families = vec![
+        queue_families.graphics.unwrap(),
+        queue_families.present.unwrap(),
+    ];
+
+    unique_families.sort_unstable();
+    unique_families.dedup();
+
+    let priority = 1.0;
+
+    for queue_family in unique_families {
+        let create_info = VkDeviceQueueCreateInfo {
+            sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            queueFamilyIndex: queue_family,
+            queueCount: 1,
+            pQueuePriorities: &priority,
+            ..Default::default()
+        };
+
+        queue_create_infos.push(create_info);
+    }
+
+    queue_create_infos
+}
+
+fn get_queue_for_family_idx(device: VkDevice, family_idx: u32) -> VkQueue {
     let mut queue = MaybeUninit::<VkQueue>::uninit();
 
     unsafe {
-        vkGetDeviceQueue(device, queue_families.graphics.unwrap(), 0, queue.as_mut_ptr());
+        vkGetDeviceQueue(device, family_idx, 0, queue.as_mut_ptr());
         queue.assume_init()
     }
 }
@@ -374,12 +397,10 @@ fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
     println!("Devices:");
 
     for (i, device) in devices.iter().enumerate() {
-        println!("Device {}", i);
-
         let properties = get_device_properties(*device);
         let features = get_device_features(*device);
 
-        print_device_properties(&properties, verbose);
+        print_device_properties(&properties, i, verbose);
 
         if verbose {
             print_device_features(&features);
@@ -387,8 +408,8 @@ fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
     }
 }
 
-fn print_device_properties(p: &VkPhysicalDeviceProperties, verbose: bool) {
-    println!("Device properties:");
+fn print_device_properties(p: &VkPhysicalDeviceProperties, idx: usize, verbose: bool) {
+    println!("Device {} properties:", idx);
     println!("\tAPI version: {} {:?}", p.apiVersion, get_vk_api_version(p.apiVersion));
     println!("\tDriver version: {} ({:#x})", p.driverVersion, p.driverVersion);
     println!("\tVendor ID: {} ({:#x})", p.vendorID, p.vendorID);
