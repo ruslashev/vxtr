@@ -25,6 +25,9 @@ pub struct State {
     gfx_queue: VkQueue,
     present_queue: VkQueue,
     swapchain: VkSwapchainKHR,
+    swapchain_images: Vec<VkImage>,
+    surface_format: VkSurfaceFormatKHR,
+    extent: VkExtent2D,
 }
 
 #[derive(Default)]
@@ -53,7 +56,9 @@ impl State {
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
-        let swapchain = create_swapchain(&window, phys_device, device, surface);
+        let (swapchain, surface_format, extent) =
+            create_swapchain(&window, phys_device, device, surface);
+        let swapchain_images = get_swapchain_images(device, swapchain);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -65,6 +70,9 @@ impl State {
             gfx_queue,
             present_queue,
             swapchain,
+            swapchain_images,
+            surface_format,
+            extent,
         }
     }
 
@@ -577,7 +585,7 @@ fn create_swapchain(
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     surface: VkSurfaceKHR,
-) -> VkSwapchainKHR {
+) -> (VkSwapchainKHR, VkSurfaceFormatKHR, VkExtent2D) {
     let swapchain_support = query_swapchain_support(phys_device, surface);
     let surface_format = choose_swapchain_surface_format(&swapchain_support.formats);
     let present_mode = choose_swapchain_present_mode(&swapchain_support.present_modes);
@@ -621,13 +629,29 @@ fn create_swapchain(
         ..Default::default()
     };
 
-    unsafe {
+    let swapchain = unsafe {
         let mut swapchain = MaybeUninit::<VkSwapchainKHR>::uninit();
 
         vkCreateSwapchainKHR(device, &create_info, ptr::null(), swapchain.as_mut_ptr())
             .check_err("create swapchain");
 
         swapchain.assume_init()
+    };
+
+    (swapchain, surface_format, extent)
+}
+
+fn get_swapchain_images(device: VkDevice, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
+    unsafe {
+        let mut count = 0;
+        vkGetSwapchainImagesKHR(device, swapchain, &mut count, ptr::null_mut());
+
+        let mut images = Vec::with_capacity(count as usize);
+        images.resize(count as usize, ptr::null_mut());
+
+        vkGetSwapchainImagesKHR(device, swapchain, &mut count, images.as_mut_ptr());
+
+        images
     }
 }
 
