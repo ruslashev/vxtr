@@ -20,6 +20,7 @@ trait CheckVkError {
 pub struct State {
     window: Window,
     instance: VkInstance,
+    surface: VkSurfaceKHR,
     device: VkDevice,
     gfx_queue: VkQueue,
 }
@@ -32,13 +33,15 @@ struct QueueFamilies {
     transfer: Option<u32>,
     sparse_binding: Option<u32>,
     protected: Option<u32>,
+    present: Option<u32>,
 }
 
 impl State {
     pub fn new(window: Window) -> Self {
         let instance = create_instance();
-        let phys_device = get_phys_device(instance);
-        let queue_families = get_queue_families(phys_device);
+        let surface = create_surface(instance, &window);
+        let phys_device = get_phys_device(instance, surface);
+        let queue_families = get_queue_families(phys_device, surface);
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_graphics_queue(device, &queue_families);
 
@@ -47,6 +50,7 @@ impl State {
         Self {
             window,
             instance,
+            surface,
             device,
             gfx_queue,
         }
@@ -63,6 +67,7 @@ impl Drop for State {
     fn drop(&mut self) {
         unsafe {
             vkDestroyDevice(self.device, ptr::null());
+            vkDestroySurfaceKHR(self.instance, self.surface, ptr::null());
             vkDestroyInstance(self.instance, ptr::null());
         }
     }
@@ -176,7 +181,17 @@ fn create_instance() -> VkInstance {
     }
 }
 
-fn get_phys_device(instance: VkInstance) -> VkPhysicalDevice {
+fn create_surface(instance: VkInstance, window: &Window) -> VkSurfaceKHR {
+    let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
+
+    unsafe {
+        glfwCreateWindowSurface(instance, window.as_inner(), ptr::null(), surface.as_mut_ptr())
+            .check_err("create window surface");
+        surface.assume_init()
+    }
+}
+
+fn get_phys_device(instance: VkInstance, surface: VkSurfaceKHR) -> VkPhysicalDevice {
     let devices = unsafe {
         let mut count = 0;
         vkEnumeratePhysicalDevices(instance, &mut count, ptr::null_mut());
@@ -193,10 +208,10 @@ fn get_phys_device(instance: VkInstance) -> VkPhysicalDevice {
 
     print_devices(&devices, false);
 
-    choose_phys_device(&devices)
+    choose_phys_device(&devices, surface)
 }
 
-fn choose_phys_device(devices: &[VkPhysicalDevice]) -> VkPhysicalDevice {
+fn choose_phys_device(devices: &[VkPhysicalDevice], surface: VkSurfaceKHR) -> VkPhysicalDevice {
     let mut devices_and_types = Vec::with_capacity(devices.len());
 
     for dev in devices {
@@ -214,7 +229,9 @@ fn choose_phys_device(devices: &[VkPhysicalDevice]) -> VkPhysicalDevice {
 
     for type_ in type_priorities {
         if let Some(device) = first_device_of_type(&devices_and_types, type_) {
-            if get_queue_families(device).graphics.is_some() {
+            let queue_families = get_queue_families(device, surface);
+
+            if queue_families.graphics.is_some() && queue_families.present.is_some() {
                 return device;
             }
         }
@@ -253,7 +270,7 @@ fn get_device_name(device: VkPhysicalDevice) -> String {
     cstr.to_str().expect("invalid device name").to_string()
 }
 
-fn get_queue_families(device: VkPhysicalDevice) -> QueueFamilies {
+fn get_queue_families(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> QueueFamilies {
     let mut families = QueueFamilies::default();
 
     let family_properties = unsafe {
@@ -269,22 +286,33 @@ fn get_queue_families(device: VkPhysicalDevice) -> QueueFamilies {
     };
 
     for (i, f) in family_properties.iter().enumerate() {
-        let idx = Some(i.try_into().unwrap());
+        let idx: u32 = i.try_into().unwrap();
+        let opt = Some(idx);
 
         if f.queueFlags & VK_QUEUE_GRAPHICS_BIT != 0 {
-            families.graphics = idx;
+            families.graphics = opt;
         }
         if f.queueFlags & VK_QUEUE_COMPUTE_BIT != 0 {
-            families.compute = idx;
+            families.compute = opt;
         }
         if f.queueFlags & VK_QUEUE_TRANSFER_BIT != 0 {
-            families.transfer = idx;
+            families.transfer = opt;
         }
         if f.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT != 0 {
-            families.sparse_binding = idx;
+            families.sparse_binding = opt;
         }
         if f.queueFlags & VK_QUEUE_PROTECTED_BIT != 0 {
-            families.protected = idx;
+            families.protected = opt;
+        }
+
+        let mut present_support = 0;
+        unsafe {
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, idx, surface, &mut present_support)
+                .check_err("get surface presentation support");
+        }
+
+        if present_support != 0 {
+            families.present = opt;
         }
     }
 

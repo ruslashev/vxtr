@@ -42,6 +42,10 @@ impl Window {
             }
         }
     }
+
+    pub fn as_inner(&self) -> *mut GLFWwindow {
+        self.window
+    }
 }
 
 impl Drop for Window {
