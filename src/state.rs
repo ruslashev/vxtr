@@ -232,9 +232,7 @@ fn choose_phys_device(devices: &[VkPhysicalDevice], surface: VkSurfaceKHR) -> Vk
 
     for type_ in type_priorities {
         if let Some(device) = first_device_of_type(&devices_and_types, type_) {
-            let queue_families = get_queue_families(device, surface);
-
-            if queue_families.graphics.is_some() && queue_families.present.is_some() {
+            if is_device_suitable(device, surface) {
                 return device;
             }
         }
@@ -248,6 +246,58 @@ fn first_device_of_type(
     type_predicate: VkPhysicalDeviceType,
 ) -> Option<VkPhysicalDevice> {
     dt.iter().find(|(_, type_)| *type_ == type_predicate).map(|(dev, _)| *dev)
+}
+
+fn is_device_suitable(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
+    let queue_families = get_queue_families(device, surface);
+
+    queue_families.graphics.is_some()
+        && queue_families.present.is_some()
+        && supports_required_extensions(device)
+}
+
+fn supports_required_extensions(device: VkPhysicalDevice) -> bool {
+    let required_extensions = [VK_KHR_SWAPCHAIN_EXTENSION_NAME];
+
+    let mut support_found = Vec::with_capacity(required_extensions.len());
+    support_found.resize(required_extensions.len(), false);
+
+    let supported_extensions = get_supported_extensions(device);
+
+    for (i, req_ext) in required_extensions.into_iter().enumerate() {
+        let req = CStr::from_bytes_with_nul(req_ext).unwrap();
+
+        for supp_ext in &supported_extensions {
+            let supp = unsafe { CStr::from_ptr(supp_ext.extensionName.as_ptr()) };
+
+            if supp == req {
+                support_found[i] = true;
+            }
+        }
+    }
+
+    support_found.into_iter().all(|found| found)
+}
+
+fn get_supported_extensions(device: VkPhysicalDevice) -> Vec<VkExtensionProperties> {
+    unsafe {
+        let mut count = 0;
+        vkEnumerateDeviceExtensionProperties(device, ptr::null(), &mut count, ptr::null_mut())
+            .check_err("get number of supported extensions");
+
+        let mut extensions = Vec::with_capacity(count as usize);
+        extensions.resize(count as usize, VkExtensionProperties::default());
+
+        vkEnumerateDeviceExtensionProperties(
+            device,
+            ptr::null(),
+            &mut count,
+            extensions.as_mut_ptr(),
+        )
+        .check_err("get supported extensions");
+
+        extensions
+    }
 }
 
 fn get_device_properties(device: VkPhysicalDevice) -> VkPhysicalDeviceProperties {
