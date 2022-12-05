@@ -26,8 +26,9 @@ pub struct State {
     present_queue: VkQueue,
     swapchain: VkSwapchainKHR,
     swapchain_images: Vec<VkImage>,
-    surface_format: VkSurfaceFormatKHR,
+    image_format: VkFormat,
     extent: VkExtent2D,
+    image_views: Vec<VkImageView>,
 }
 
 #[derive(Default)]
@@ -56,9 +57,10 @@ impl State {
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
-        let (swapchain, surface_format, extent) =
+        let (swapchain, image_format, extent) =
             create_swapchain(&window, phys_device, device, surface);
         let swapchain_images = get_swapchain_images(device, swapchain);
+        let image_views = create_image_views(device, &swapchain_images, image_format);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -71,8 +73,9 @@ impl State {
             present_queue,
             swapchain,
             swapchain_images,
-            surface_format,
+            image_format,
             extent,
+            image_views,
         }
     }
 
@@ -86,6 +89,10 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            for image_view in &self.image_views {
+                vkDestroyImageView(self.device, *image_view, ptr::null());
+            }
+
             vkDestroySwapchainKHR(self.device, self.swapchain, ptr::null());
             vkDestroyDevice(self.device, ptr::null());
             vkDestroySurfaceKHR(self.instance, self.surface, ptr::null());
@@ -585,7 +592,7 @@ fn create_swapchain(
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     surface: VkSurfaceKHR,
-) -> (VkSwapchainKHR, VkSurfaceFormatKHR, VkExtent2D) {
+) -> (VkSwapchainKHR, VkFormat, VkExtent2D) {
     let swapchain_support = query_swapchain_support(phys_device, surface);
     let surface_format = choose_swapchain_surface_format(&swapchain_support.formats);
     let present_mode = choose_swapchain_present_mode(&swapchain_support.present_modes);
@@ -638,7 +645,7 @@ fn create_swapchain(
         swapchain.assume_init()
     };
 
-    (swapchain, surface_format, extent)
+    (swapchain, surface_format.format, extent)
 }
 
 fn get_swapchain_images(device: VkDevice, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
@@ -653,6 +660,48 @@ fn get_swapchain_images(device: VkDevice, swapchain: VkSwapchainKHR) -> Vec<VkIm
 
         images
     }
+}
+
+fn create_image_views(
+    device: VkDevice,
+    swapchain_images: &[VkImage],
+    image_format: VkFormat,
+) -> Vec<VkImageView> {
+    let mut image_views = Vec::with_capacity(swapchain_images.len());
+
+    for img in swapchain_images {
+        let create_info = VkImageViewCreateInfo {
+            sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            image: *img,
+            viewType: VK_IMAGE_VIEW_TYPE_2D,
+            format: image_format,
+            components: VkComponentMapping {
+                r: VK_COMPONENT_SWIZZLE_IDENTITY,
+                g: VK_COMPONENT_SWIZZLE_IDENTITY,
+                b: VK_COMPONENT_SWIZZLE_IDENTITY,
+                a: VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
+            subresourceRange: VkImageSubresourceRange {
+                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,
+                baseMipLevel: 0,
+                levelCount: 1,
+                baseArrayLayer: 0,
+                layerCount: 1,
+            },
+            ..Default::default()
+        };
+
+        let image_view = unsafe {
+            let mut view = MaybeUninit::<VkImageView>::uninit();
+            vkCreateImageView(device, &create_info, ptr::null(), view.as_mut_ptr())
+                .check_err("create image view");
+            view.assume_init()
+        };
+
+        image_views.push(image_view);
+    }
+
+    image_views
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
