@@ -29,6 +29,7 @@ pub struct State {
     image_format: VkFormat,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
+    render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
 }
 
@@ -67,8 +68,8 @@ impl State {
             create_swapchain(&window, phys_device, device, surface);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
+        let render_pass = create_render_pass(device, image_format);
         create_graphics_pipeline(device, &extent);
-
         let pipeline_layout = create_pipeline_layout(device);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
@@ -85,6 +86,7 @@ impl State {
             image_format,
             extent,
             image_views,
+            render_pass,
             pipeline_layout,
         }
     }
@@ -100,6 +102,7 @@ impl Drop for State {
     fn drop(&mut self) {
         unsafe {
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
+            vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
 
             for image_view in &self.image_views {
                 vkDestroyImageView(self.device, *image_view, ptr::null());
@@ -714,6 +717,50 @@ fn create_image_views(
     }
 
     image_views
+}
+
+fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass {
+    let color_attachment = VkAttachmentDescription {
+        format: image_format,
+        samples: VK_SAMPLE_COUNT_1_BIT,
+        loadOp: VK_ATTACHMENT_LOAD_OP_CLEAR,
+        storeOp: VK_ATTACHMENT_STORE_OP_STORE,
+        stencilLoadOp: VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        stencilStoreOp: VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        initialLayout: VK_IMAGE_LAYOUT_UNDEFINED,
+        finalLayout: VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        ..Default::default()
+    };
+
+    let color_attachment_ref = VkAttachmentReference {
+        attachment: 0,
+        layout: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    };
+
+    let subpass_desc = VkSubpassDescription {
+        pipelineBindPoint: VK_PIPELINE_BIND_POINT_GRAPHICS,
+        colorAttachmentCount: 1,
+        pColorAttachments: &color_attachment_ref,
+        ..Default::default()
+    };
+
+    let create_info = VkRenderPassCreateInfo {
+        sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        attachmentCount: 1,
+        pAttachments: &color_attachment,
+        subpassCount: 1,
+        pSubpasses: &subpass_desc,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut render_pass = MaybeUninit::<VkRenderPass>::uninit();
+
+        vkCreateRenderPass(device, &create_info, ptr::null_mut(), render_pass.as_mut_ptr())
+            .check_err("create render pass");
+
+        render_pass.assume_init()
+    }
 }
 
 fn create_graphics_pipeline(device: VkDevice, extent: &VkExtent2D) {
