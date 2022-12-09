@@ -29,6 +29,7 @@ pub struct State {
     image_format: VkFormat,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
+    pipeline_layout: VkPipelineLayout,
 }
 
 #[derive(Default)]
@@ -48,6 +49,11 @@ struct SwapchainSupportDetails {
     present_modes: Vec<VkPresentModeKHR>,
 }
 
+enum ShaderType {
+    Vertex,
+    Fragment,
+}
+
 impl State {
     pub fn new(window: Window) -> Self {
         let instance = create_instance();
@@ -61,6 +67,9 @@ impl State {
             create_swapchain(&window, phys_device, device, surface);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
+        create_graphics_pipeline(device, &extent);
+
+        let pipeline_layout = create_pipeline_layout(device);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -76,6 +85,7 @@ impl State {
             image_format,
             extent,
             image_views,
+            pipeline_layout,
         }
     }
 
@@ -89,6 +99,8 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
+
             for image_view in &self.image_views {
                 vkDestroyImageView(self.device, *image_view, ptr::null());
             }
@@ -702,6 +714,205 @@ fn create_image_views(
     }
 
     image_views
+}
+
+fn create_graphics_pipeline(device: VkDevice, extent: &VkExtent2D) {
+    let vert_compiled = include_bytes!("../shaders/shader.vert.spv");
+    let frag_compiled = include_bytes!("../shaders/shader.frag.spv");
+
+    let vert_shader_mod = create_shader_module(device, vert_compiled);
+    let frag_shader_mod = create_shader_module(device, frag_compiled);
+
+    let shader_stage_infos = [
+        create_shader_stage_info(vert_shader_mod, ShaderType::Vertex, "main"),
+        create_shader_stage_info(frag_shader_mod, ShaderType::Fragment, "main"),
+    ];
+
+    let vertex_input = create_pipeline_vertex_input_info();
+
+    let input_assembly = create_pipeline_input_assembly();
+
+    let viewport = create_pipeline_viewport(extent);
+    let scissor = create_pipeline_scissor(extent);
+    let viewport_state = create_static_viewport_state_info(&viewport, &scissor);
+
+    let rasterizer_info = create_rasterizer_info();
+
+    let multisampling_info = create_multisampling_info();
+
+    let blending_info = create_blending_info();
+
+    unsafe {
+        vkDestroyShaderModule(device, vert_shader_mod, ptr::null_mut());
+        vkDestroyShaderModule(device, frag_shader_mod, ptr::null_mut());
+    }
+}
+
+fn create_shader_module(device: VkDevice, bytes: &[u8]) -> VkShaderModule {
+    let transmuted_copy = pack_to_u32s(bytes);
+
+    let create_info = VkShaderModuleCreateInfo {
+        sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
+        codeSize: bytes.len(),
+        pCode: transmuted_copy.as_ptr(),
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut shader_module = MaybeUninit::<VkShaderModule>::uninit();
+
+        vkCreateShaderModule(device, &create_info, ptr::null_mut(), shader_module.as_mut_ptr())
+            .check_err("create shader module");
+
+        shader_module.assume_init()
+    }
+}
+
+fn pack_to_u32s(bytes: &[u8]) -> Vec<u32> {
+    assert!(bytes.len() % 4 == 0, "code length must be a multiple of 4");
+
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| match chunk {
+            &[b0, b1, b2, b3] => u32::from_ne_bytes([b0, b1, b2, b3]),
+            _ => unreachable!(),
+        })
+        .collect()
+}
+
+fn create_shader_stage_info<S: Into<Vec<u8>>>(
+    shader_module: VkShaderModule,
+    sh_type: ShaderType,
+    entrypoint: S,
+) -> VkPipelineShaderStageCreateInfo {
+    let entrypoint_c_str = CString::new(entrypoint).unwrap();
+
+    let stage = match sh_type {
+        ShaderType::Vertex => VK_SHADER_STAGE_VERTEX_BIT,
+        ShaderType::Fragment => VK_SHADER_STAGE_FRAGMENT_BIT,
+    };
+
+    VkPipelineShaderStageCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        stage,
+        module: shader_module,
+        pName: entrypoint_c_str.as_ptr(),
+        ..Default::default()
+    }
+}
+
+fn create_pipeline_vertex_input_info() -> VkPipelineVertexInputStateCreateInfo {
+    VkPipelineVertexInputStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        vertexBindingDescriptionCount: 0,
+        pVertexBindingDescriptions: ptr::null_mut(),
+        vertexAttributeDescriptionCount: 0,
+        pVertexAttributeDescriptions: ptr::null_mut(),
+        ..Default::default()
+    }
+}
+
+fn create_pipeline_input_assembly() -> VkPipelineInputAssemblyStateCreateInfo {
+    VkPipelineInputAssemblyStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+        topology: VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        primitiveRestartEnable: 0,
+        ..Default::default()
+    }
+}
+
+fn create_pipeline_viewport(extent: &VkExtent2D) -> VkViewport {
+    VkViewport {
+        x: 0.0,
+        y: 0.0,
+        width: extent.width as f32,
+        height: extent.height as f32,
+        minDepth: 0.0,
+        maxDepth: 1.0,
+    }
+}
+
+fn create_pipeline_scissor(extent: &VkExtent2D) -> VkRect2D {
+    VkRect2D {
+        offset: VkOffset2D { x: 0, y: 0 },
+        extent: *extent,
+    }
+}
+
+fn create_static_viewport_state_info(
+    viewport: &VkViewport,
+    scissor: &VkRect2D,
+) -> VkPipelineViewportStateCreateInfo {
+    VkPipelineViewportStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+        viewportCount: 1,
+        pViewports: viewport as *const VkViewport,
+        scissorCount: 1,
+        pScissors: scissor as *const VkRect2D,
+        ..Default::default()
+    }
+}
+
+fn create_rasterizer_info() -> VkPipelineRasterizationStateCreateInfo {
+    VkPipelineRasterizationStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+        depthClampEnable: 0,
+        rasterizerDiscardEnable: 0,
+        polygonMode: VK_POLYGON_MODE_FILL,
+        lineWidth: 1.0,
+        cullMode: VK_CULL_MODE_BACK_BIT,
+        frontFace: VK_FRONT_FACE_CLOCKWISE,
+        depthBiasEnable: 0,
+        ..Default::default()
+    }
+}
+
+fn create_multisampling_info() -> VkPipelineMultisampleStateCreateInfo {
+    VkPipelineMultisampleStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+        sampleShadingEnable: 0,
+        rasterizationSamples: VK_SAMPLE_COUNT_1_BIT,
+        minSampleShading: 1.0,
+        pSampleMask: ptr::null(),
+        alphaToCoverageEnable: 0,
+        alphaToOneEnable: 0,
+        ..Default::default()
+    }
+}
+
+fn create_blending_info() -> VkPipelineColorBlendStateCreateInfo {
+    let attachment = VkPipelineColorBlendAttachmentState {
+        colorWriteMask: VK_COLOR_COMPONENT_R_BIT
+            | VK_COLOR_COMPONENT_G_BIT
+            | VK_COLOR_COMPONENT_B_BIT
+            | VK_COLOR_COMPONENT_A_BIT,
+        blendEnable: 0,
+        ..Default::default()
+    };
+
+    VkPipelineColorBlendStateCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+        logicOpEnable: 0,
+        attachmentCount: 1,
+        pAttachments: &attachment,
+        ..Default::default()
+    }
+}
+
+fn create_pipeline_layout(device: VkDevice) -> VkPipelineLayout {
+    let create_info = VkPipelineLayoutCreateInfo {
+        sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut layout = MaybeUninit::<VkPipelineLayout>::uninit();
+
+        vkCreatePipelineLayout(device, &create_info, ptr::null_mut(), layout.as_mut_ptr())
+            .check_err("create pipeline layout");
+
+        layout.assume_init()
+    }
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
