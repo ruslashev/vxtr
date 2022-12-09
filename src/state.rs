@@ -31,6 +31,7 @@ pub struct State {
     image_views: Vec<VkImageView>,
     render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
+    pipeline: VkPipeline,
 }
 
 #[derive(Default)]
@@ -69,8 +70,8 @@ impl State {
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
-        create_graphics_pipeline(device, &extent);
         let pipeline_layout = create_pipeline_layout(device);
+        let pipeline = create_graphics_pipeline(device, &extent, render_pass, pipeline_layout);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -88,6 +89,7 @@ impl State {
             image_views,
             render_pass,
             pipeline_layout,
+            pipeline,
         }
     }
 
@@ -101,6 +103,7 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
             vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
 
@@ -763,16 +766,23 @@ fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass 
     }
 }
 
-fn create_graphics_pipeline(device: VkDevice, extent: &VkExtent2D) {
+fn create_graphics_pipeline(
+    device: VkDevice,
+    extent: &VkExtent2D,
+    render_pass: VkRenderPass,
+    pipeline_layout: VkPipelineLayout,
+) -> VkPipeline {
     let vert_compiled = include_bytes!("../shaders/shader.vert.spv");
     let frag_compiled = include_bytes!("../shaders/shader.frag.spv");
 
     let vert_shader_mod = create_shader_module(device, vert_compiled);
     let frag_shader_mod = create_shader_module(device, frag_compiled);
 
+    let entrypoint_main = CString::new("main").unwrap();
+
     let shader_stage_infos = [
-        create_shader_stage_info(vert_shader_mod, ShaderType::Vertex, "main"),
-        create_shader_stage_info(frag_shader_mod, ShaderType::Fragment, "main"),
+        create_shader_stage_info(vert_shader_mod, ShaderType::Vertex, &entrypoint_main),
+        create_shader_stage_info(frag_shader_mod, ShaderType::Fragment, &entrypoint_main),
     ];
 
     let vertex_input = create_pipeline_vertex_input_info();
@@ -783,16 +793,51 @@ fn create_graphics_pipeline(device: VkDevice, extent: &VkExtent2D) {
     let scissor = create_pipeline_scissor(extent);
     let viewport_state = create_static_viewport_state_info(&viewport, &scissor);
 
-    let rasterizer_info = create_rasterizer_info();
+    let rasterizer = create_rasterizer_info();
 
-    let multisampling_info = create_multisampling_info();
+    let multisampling = create_multisampling_info();
 
-    let blending_info = create_blending_info();
+    let disabled_blending = create_disabled_blending_attachment();
+    let blending = create_blending_info(&disabled_blending);
+
+    let create_info = VkGraphicsPipelineCreateInfo {
+        sType: VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+        stageCount: 2,
+        pStages: shader_stage_infos.as_ptr(),
+        pVertexInputState: &vertex_input,
+        pInputAssemblyState: &input_assembly,
+        pViewportState: &viewport_state,
+        pRasterizationState: &rasterizer,
+        pMultisampleState: &multisampling,
+        pColorBlendState: &blending,
+        layout: pipeline_layout,
+        renderPass: render_pass,
+        subpass: 0,
+        ..Default::default()
+    };
+
+    let graphics_pipeline = unsafe {
+        let mut pipeline = MaybeUninit::<VkPipeline>::uninit();
+
+        vkCreateGraphicsPipelines(
+            device,
+            ptr::null_mut(),
+            1,
+            &create_info,
+            ptr::null_mut(),
+            pipeline.as_mut_ptr(),
+        )
+        .check_err("create pipeline");
+
+        pipeline.assume_init()
+    };
 
     unsafe {
         vkDestroyShaderModule(device, vert_shader_mod, ptr::null_mut());
         vkDestroyShaderModule(device, frag_shader_mod, ptr::null_mut());
     }
+
+    graphics_pipeline
 }
 
 fn create_shader_module(device: VkDevice, bytes: &[u8]) -> VkShaderModule {
@@ -827,13 +872,11 @@ fn pack_to_u32s(bytes: &[u8]) -> Vec<u32> {
         .collect()
 }
 
-fn create_shader_stage_info<S: Into<Vec<u8>>>(
+fn create_shader_stage_info(
     shader_module: VkShaderModule,
     sh_type: ShaderType,
-    entrypoint: S,
+    entrypoint: &CString,
 ) -> VkPipelineShaderStageCreateInfo {
-    let entrypoint_c_str = CString::new(entrypoint).unwrap();
-
     let stage = match sh_type {
         ShaderType::Vertex => VK_SHADER_STAGE_VERTEX_BIT,
         ShaderType::Fragment => VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -843,7 +886,7 @@ fn create_shader_stage_info<S: Into<Vec<u8>>>(
         sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
         stage,
         module: shader_module,
-        pName: entrypoint_c_str.as_ptr(),
+        pName: entrypoint.as_ptr(),
         ..Default::default()
     }
 }
@@ -927,21 +970,25 @@ fn create_multisampling_info() -> VkPipelineMultisampleStateCreateInfo {
     }
 }
 
-fn create_blending_info() -> VkPipelineColorBlendStateCreateInfo {
-    let attachment = VkPipelineColorBlendAttachmentState {
+fn create_disabled_blending_attachment() -> VkPipelineColorBlendAttachmentState {
+    VkPipelineColorBlendAttachmentState {
         colorWriteMask: VK_COLOR_COMPONENT_R_BIT
             | VK_COLOR_COMPONENT_G_BIT
             | VK_COLOR_COMPONENT_B_BIT
             | VK_COLOR_COMPONENT_A_BIT,
         blendEnable: 0,
         ..Default::default()
-    };
+    }
+}
 
+fn create_blending_info(
+    attachment: &VkPipelineColorBlendAttachmentState,
+) -> VkPipelineColorBlendStateCreateInfo {
     VkPipelineColorBlendStateCreateInfo {
         sType: VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
         logicOpEnable: 0,
         attachmentCount: 1,
-        pAttachments: &attachment,
+        pAttachments: attachment,
         ..Default::default()
     }
 }
