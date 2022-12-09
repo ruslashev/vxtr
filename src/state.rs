@@ -33,6 +33,8 @@ pub struct State {
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
     framebuffers: Vec<VkFramebuffer>,
+    command_pool: VkCommandPool,
+    command_buffer: VkCommandBuffer,
 }
 
 #[derive(Default)]
@@ -74,6 +76,8 @@ impl State {
         let pipeline_layout = create_pipeline_layout(device);
         let pipeline = create_graphics_pipeline(device, &extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
+        let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
+        let command_buffer = create_command_buffer(device, command_pool);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -93,6 +97,8 @@ impl State {
             pipeline_layout,
             pipeline,
             framebuffers,
+            command_pool,
+            command_buffer,
         }
     }
 
@@ -106,6 +112,8 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
+
             for framebuffer in &self.framebuffers {
                 vkDestroyFramebuffer(self.device, *framebuffer, ptr::null());
             }
@@ -1049,6 +1057,43 @@ fn create_framebuffers(
     }
 
     framebuffers
+}
+
+fn create_command_pool(device: VkDevice, graphics_queue_family: u32) -> VkCommandPool {
+    let create_info = VkCommandPoolCreateInfo {
+        sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+        queueFamilyIndex: graphics_queue_family,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut command_pool = MaybeUninit::<VkCommandPool>::uninit();
+
+        vkCreateCommandPool(device, &create_info, ptr::null(), command_pool.as_mut_ptr())
+            .check_err("create command pool");
+
+        command_pool.assume_init()
+    }
+}
+
+fn create_command_buffer(device: VkDevice, command_pool: VkCommandPool) -> VkCommandBuffer {
+    let alloc_info = VkCommandBufferAllocateInfo {
+        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        commandPool: command_pool,
+        level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        commandBufferCount: 1,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut command_buffer = MaybeUninit::<VkCommandBuffer>::uninit();
+
+        vkAllocateCommandBuffers(device, &alloc_info, command_buffer.as_mut_ptr())
+            .check_err("allocate command buffer");
+
+        command_buffer.assume_init()
+    }
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
