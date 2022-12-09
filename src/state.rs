@@ -32,6 +32,7 @@ pub struct State {
     render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
+    framebuffers: Vec<VkFramebuffer>,
 }
 
 #[derive(Default)]
@@ -72,6 +73,7 @@ impl State {
         let render_pass = create_render_pass(device, image_format);
         let pipeline_layout = create_pipeline_layout(device);
         let pipeline = create_graphics_pipeline(device, &extent, render_pass, pipeline_layout);
+        let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -90,6 +92,7 @@ impl State {
             render_pass,
             pipeline_layout,
             pipeline,
+            framebuffers,
         }
     }
 
@@ -103,6 +106,10 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            for framebuffer in &self.framebuffers {
+                vkDestroyFramebuffer(self.device, *framebuffer, ptr::null());
+            }
+
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
             vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
@@ -1007,6 +1014,41 @@ fn create_pipeline_layout(device: VkDevice) -> VkPipelineLayout {
 
         layout.assume_init()
     }
+}
+
+fn create_framebuffers(
+    device: VkDevice,
+    image_views: &[VkImageView],
+    extent: VkExtent2D,
+    render_pass: VkRenderPass,
+) -> Vec<VkFramebuffer> {
+    let mut framebuffers = Vec::with_capacity(image_views.len());
+
+    for image_view in image_views {
+        let create_info = VkFramebufferCreateInfo {
+            sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            renderPass: render_pass,
+            attachmentCount: 1,
+            pAttachments: image_view,
+            width: extent.width,
+            height: extent.height,
+            layers: 1,
+            ..Default::default()
+        };
+
+        let framebuffer = unsafe {
+            let mut fb = MaybeUninit::<VkFramebuffer>::uninit();
+
+            vkCreateFramebuffer(device, &create_info, ptr::null_mut(), fb.as_mut_ptr())
+                .check_err("create framebuffer");
+
+            fb.assume_init()
+        };
+
+        framebuffers.push(framebuffer);
+    }
+
+    framebuffers
 }
 
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
