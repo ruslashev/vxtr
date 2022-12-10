@@ -1096,6 +1096,55 @@ fn create_command_buffer(device: VkDevice, command_pool: VkCommandPool) -> VkCom
     }
 }
 
+fn record_command_to_buffer(
+    cmd_buffer: VkCommandBuffer,
+    framebuffer: VkFramebuffer,
+    render_pass: VkRenderPass,
+    extent: VkExtent2D,
+    gfx_pipeline: VkPipeline,
+) {
+    let begin_info = VkCommandBufferBeginInfo {
+        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        ..Default::default()
+    };
+
+    unsafe {
+        vkBeginCommandBuffer(cmd_buffer, &begin_info)
+            .check_err("begin recording to command buffer");
+    }
+
+    let clear_color = VkClearValue {
+        color: VkClearColorValue {
+            float32: [0.0, 0.0, 0.0, 1.0],
+        },
+    };
+
+    let render_pass_info = VkRenderPassBeginInfo {
+        sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+        renderPass: render_pass,
+        framebuffer,
+        renderArea: VkRect2D {
+            offset: VkOffset2D { x: 0, y: 0 },
+            extent,
+        },
+        clearValueCount: 1,
+        pClearValues: &clear_color,
+        ..Default::default()
+    };
+
+    unsafe {
+        vkCmdBeginRenderPass(cmd_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
+
+        vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
+
+        vkCmdEndRenderPass(cmd_buffer);
+
+        vkEndCommandBuffer(cmd_buffer).check_err("end command buffer recording");
+    }
+}
+
 fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
     println!("Devices:");
 
