@@ -6,6 +6,8 @@ use std::ptr;
 
 use crate::window::Window;
 
+const MAX_FRAMES_IN_FLIGHT: usize = 2;
+
 #[allow(clippy::cast_sign_loss)]
 const SUBPASS_EXTERNAL: u32 = VK_SUBPASS_EXTERNAL as u32;
 
@@ -35,10 +37,11 @@ pub struct State {
     pipeline: VkPipeline,
     framebuffers: Vec<VkFramebuffer>,
     command_pool: VkCommandPool,
-    command_buffer: VkCommandBuffer,
-    image_available: VkSemaphore,
-    render_finished: VkSemaphore,
-    is_rendering: VkFence,
+    command_buffers: Vec<VkCommandBuffer>,
+    image_available: Vec<VkSemaphore>,
+    render_finished: Vec<VkSemaphore>,
+    is_rendering: Vec<VkFence>,
+    current_frame: usize,
 }
 
 #[derive(Default)]
@@ -82,7 +85,7 @@ impl State {
         let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
-        let command_buffer = create_command_buffer(device, command_pool);
+        let command_buffers = create_command_buffers(device, command_pool);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
@@ -102,10 +105,11 @@ impl State {
             pipeline,
             framebuffers,
             command_pool,
-            command_buffer,
+            command_buffers,
             image_available,
             render_finished,
             is_rendering,
+            current_frame: 0,
         }
     }
 
@@ -120,19 +124,25 @@ impl State {
         }
     }
 
-    fn present(&self) {
+    fn present(&mut self) {
         let timeout = u64::MAX;
 
+        let command_buffer = self.command_buffers[self.current_frame];
+        let image_available = self.image_available[self.current_frame];
+        let render_finished = self.render_finished[self.current_frame];
+        let is_rendering = self.is_rendering[self.current_frame];
+
         let image_index = unsafe {
-            vkWaitForFences(self.device, 1, &self.is_rendering, 1, timeout);
-            vkResetFences(self.device, 1, &self.is_rendering);
+            vkWaitForFences(self.device, 1, &is_rendering, 1, timeout);
+            vkResetFences(self.device, 1, &is_rendering);
 
             let mut image_index = 0;
+
             vkAcquireNextImageKHR(
                 self.device,
                 self.swapchain,
                 timeout,
-                self.image_available,
+                image_available,
                 ptr::null_mut(),
                 &mut image_index,
             );
@@ -141,16 +151,16 @@ impl State {
         };
 
         record_commands_to_buffer(
-            self.command_buffer,
+            command_buffer,
             self.framebuffers[image_index as usize],
             self.render_pass,
             self.extent,
             self.pipeline,
         );
 
-        let wait_semaphores = [self.image_available];
+        let wait_semaphores = [image_available];
         let wait_stages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
-        let signal_semaphores = [self.render_finished];
+        let signal_semaphores = [render_finished];
 
         let submit_info = VkSubmitInfo {
             sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -158,14 +168,14 @@ impl State {
             pWaitSemaphores: wait_semaphores.as_ptr(),
             pWaitDstStageMask: wait_stages.as_ptr(),
             commandBufferCount: 1,
-            pCommandBuffers: &self.command_buffer,
+            pCommandBuffers: &command_buffer,
             signalSemaphoreCount: 1,
             pSignalSemaphores: signal_semaphores.as_ptr(),
             ..Default::default()
         };
 
         unsafe {
-            vkQueueSubmit(self.gfx_queue, 1, &submit_info, self.is_rendering)
+            vkQueueSubmit(self.gfx_queue, 1, &submit_info, is_rendering)
                 .check_err("submit to draw queue");
         }
 
@@ -184,15 +194,25 @@ impl State {
         unsafe {
             vkQueuePresentKHR(self.present_queue, &present_info);
         }
+
+        self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 }
 
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
-            vkDestroySemaphore(self.device, self.image_available, ptr::null());
-            vkDestroySemaphore(self.device, self.render_finished, ptr::null());
-            vkDestroyFence(self.device, self.is_rendering, ptr::null());
+            for sem in &self.image_available {
+                vkDestroySemaphore(self.device, *sem, ptr::null());
+            }
+
+            for sem in &self.render_finished {
+                vkDestroySemaphore(self.device, *sem, ptr::null());
+            }
+
+            for fence in &self.is_rendering {
+                vkDestroyFence(self.device, *fence, ptr::null());
+            }
 
             vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
 
@@ -1177,23 +1197,24 @@ fn create_command_pool(device: VkDevice, graphics_queue_family: u32) -> VkComman
     }
 }
 
-fn create_command_buffer(device: VkDevice, command_pool: VkCommandPool) -> VkCommandBuffer {
+fn create_command_buffers(device: VkDevice, command_pool: VkCommandPool) -> Vec<VkCommandBuffer> {
+    let mut command_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+    command_buffers.resize(MAX_FRAMES_IN_FLIGHT, ptr::null_mut());
+
     let alloc_info = VkCommandBufferAllocateInfo {
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         commandPool: command_pool,
         level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        commandBufferCount: 1,
+        commandBufferCount: command_buffers.len().try_into().unwrap(),
         ..Default::default()
     };
 
     unsafe {
-        let mut command_buffer = MaybeUninit::<VkCommandBuffer>::uninit();
-
-        vkAllocateCommandBuffers(device, &alloc_info, command_buffer.as_mut_ptr())
+        vkAllocateCommandBuffers(device, &alloc_info, command_buffers.as_mut_ptr())
             .check_err("allocate command buffer");
-
-        command_buffer.assume_init()
     }
+
+    command_buffers
 }
 
 fn record_commands_to_buffer(
@@ -1245,10 +1266,16 @@ fn record_commands_to_buffer(
     }
 }
 
-fn create_sync_objects(device: VkDevice) -> (VkSemaphore, VkSemaphore, VkFence) {
-    let image_available = create_semaphore(device);
-    let render_finished = create_semaphore(device);
-    let is_rendering = create_fence(device);
+fn create_sync_objects(device: VkDevice) -> (Vec<VkSemaphore>, Vec<VkSemaphore>, Vec<VkFence>) {
+    let mut image_available = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+    let mut render_finished = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+    let mut is_rendering = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+
+    for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        image_available.push(create_semaphore(device));
+        render_finished.push(create_semaphore(device));
+        is_rendering.push(create_fence(device));
+    }
 
     (image_available, render_finished, is_rendering)
 }
