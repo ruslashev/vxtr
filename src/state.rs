@@ -35,6 +35,9 @@ pub struct State {
     framebuffers: Vec<VkFramebuffer>,
     command_pool: VkCommandPool,
     command_buffer: VkCommandBuffer,
+    image_available: VkSemaphore,
+    render_finished: VkSemaphore,
+    is_rendering: VkFence,
 }
 
 #[derive(Default)]
@@ -78,6 +81,7 @@ impl State {
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
         let command_buffer = create_command_buffer(device, command_pool);
+        let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -99,12 +103,86 @@ impl State {
             framebuffers,
             command_pool,
             command_buffer,
+            image_available,
+            render_finished,
+            is_rendering,
         }
     }
 
     pub fn main_loop(&mut self) {
         while self.window.running {
             self.window.poll_events();
+            self.present();
+        }
+
+        unsafe {
+            vkDeviceWaitIdle(self.device);
+        }
+    }
+
+    fn present(&self) {
+        let timeout = u64::MAX;
+
+        let image_index = unsafe {
+            vkWaitForFences(self.device, 1, &self.is_rendering, 1, timeout);
+            vkResetFences(self.device, 1, &self.is_rendering);
+
+            let mut image_index = 0;
+            vkAcquireNextImageKHR(
+                self.device,
+                self.swapchain,
+                timeout,
+                self.image_available,
+                ptr::null_mut(),
+                &mut image_index,
+            );
+
+            image_index
+        };
+
+        record_commands_to_buffer(
+            self.command_buffer,
+            self.framebuffers[image_index as usize],
+            self.render_pass,
+            self.extent,
+            self.pipeline,
+        );
+
+        let wait_semaphores = [self.image_available];
+        let wait_stages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
+        let signal_semaphores = [self.render_finished];
+
+        let submit_info = VkSubmitInfo {
+            sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            waitSemaphoreCount: 1,
+            pWaitSemaphores: wait_semaphores.as_ptr(),
+            pWaitDstStageMask: wait_stages.as_ptr(),
+            commandBufferCount: 1,
+            pCommandBuffers: &self.command_buffer,
+            signalSemaphoreCount: 1,
+            pSignalSemaphores: signal_semaphores.as_ptr(),
+            ..Default::default()
+        };
+
+        unsafe {
+            vkQueueSubmit(self.gfx_queue, 1, &submit_info, self.is_rendering)
+                .check_err("submit to draw queue");
+        }
+
+        let swapchains = [self.swapchain];
+
+        let present_info = VkPresentInfoKHR {
+            sType: VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            waitSemaphoreCount: 1,
+            pWaitSemaphores: signal_semaphores.as_ptr(),
+            swapchainCount: 1,
+            pSwapchains: swapchains.as_ptr(),
+            pImageIndices: &image_index,
+            ..Default::default()
+        };
+
+        unsafe {
+            vkQueuePresentKHR(self.present_queue, &present_info);
         }
     }
 }
@@ -112,6 +190,10 @@ impl State {
 impl Drop for State {
     fn drop(&mut self) {
         unsafe {
+            vkDestroySemaphore(self.device, self.image_available, ptr::null());
+            vkDestroySemaphore(self.device, self.render_finished, ptr::null());
+            vkDestroyFence(self.device, self.is_rendering, ptr::null());
+
             vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
 
             for framebuffer in &self.framebuffers {
@@ -762,12 +844,24 @@ fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass 
         ..Default::default()
     };
 
+    let subpass_dependency = VkSubpassDependency {
+        srcSubpass: VK_SUBPASS_EXTERNAL as u32,
+        dstSubpass: 0,
+        srcStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        srcAccessMask: 0,
+        dstStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        dstAccessMask: VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        ..Default::default()
+    };
+
     let create_info = VkRenderPassCreateInfo {
         sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
         attachmentCount: 1,
         pAttachments: &color_attachment,
         subpassCount: 1,
         pSubpasses: &subpass_desc,
+        dependencyCount: 1,
+        pDependencies: &subpass_dependency,
         ..Default::default()
     };
 
@@ -1096,7 +1190,7 @@ fn create_command_buffer(device: VkDevice, command_pool: VkCommandPool) -> VkCom
     }
 }
 
-fn record_command_to_buffer(
+fn record_commands_to_buffer(
     cmd_buffer: VkCommandBuffer,
     framebuffer: VkFramebuffer,
     render_pass: VkRenderPass,
@@ -1107,11 +1201,6 @@ fn record_command_to_buffer(
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         ..Default::default()
     };
-
-    unsafe {
-        vkBeginCommandBuffer(cmd_buffer, &begin_info)
-            .check_err("begin recording to command buffer");
-    }
 
     let clear_color = VkClearValue {
         color: VkClearColorValue {
@@ -1133,6 +1222,11 @@ fn record_command_to_buffer(
     };
 
     unsafe {
+        vkResetCommandBuffer(cmd_buffer, 0);
+
+        vkBeginCommandBuffer(cmd_buffer, &begin_info)
+            .check_err("begin recording to command buffer");
+
         vkCmdBeginRenderPass(cmd_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
 
         vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
@@ -1142,6 +1236,47 @@ fn record_command_to_buffer(
         vkCmdEndRenderPass(cmd_buffer);
 
         vkEndCommandBuffer(cmd_buffer).check_err("end command buffer recording");
+    }
+}
+
+fn create_sync_objects(device: VkDevice) -> (VkSemaphore, VkSemaphore, VkFence) {
+    let image_available = create_semaphore(device);
+    let render_finished = create_semaphore(device);
+    let is_rendering = create_fence(device);
+
+    (image_available, render_finished, is_rendering)
+}
+
+fn create_semaphore(device: VkDevice) -> VkSemaphore {
+    let create_info = VkSemaphoreCreateInfo {
+        sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut semaphore = MaybeUninit::<VkSemaphore>::uninit();
+
+        vkCreateSemaphore(device, &create_info, ptr::null_mut(), semaphore.as_mut_ptr())
+            .check_err("create semaphore");
+
+        semaphore.assume_init()
+    }
+}
+
+fn create_fence(device: VkDevice) -> VkFence {
+    let create_info = VkFenceCreateInfo {
+        sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+        flags: VK_FENCE_CREATE_SIGNALED_BIT,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut fence = MaybeUninit::<VkFence>::uninit();
+
+        vkCreateFence(device, &create_info, ptr::null_mut(), fence.as_mut_ptr())
+            .check_err("create fence");
+
+        fence.assume_init()
     }
 }
 
