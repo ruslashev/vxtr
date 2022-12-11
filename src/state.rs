@@ -6,6 +6,9 @@ use std::ptr;
 
 use crate::window::Window;
 
+#[allow(clippy::cast_sign_loss)]
+const SUBPASS_EXTERNAL: u32 = VK_SUBPASS_EXTERNAL as u32;
+
 macro_rules! c_str {
     ($lit:literal) => {{
         let padded = concat!($lit, "\0").as_bytes();
@@ -25,8 +28,6 @@ pub struct State {
     gfx_queue: VkQueue,
     present_queue: VkQueue,
     swapchain: VkSwapchainKHR,
-    swapchain_images: Vec<VkImage>,
-    image_format: VkFormat,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
     render_pass: VkRenderPass,
@@ -57,6 +58,7 @@ struct SwapchainSupportDetails {
     present_modes: Vec<VkPresentModeKHR>,
 }
 
+#[derive(Clone, Copy)]
 enum ShaderType {
     Vertex,
     Fragment,
@@ -77,7 +79,7 @@ impl State {
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
         let pipeline_layout = create_pipeline_layout(device);
-        let pipeline = create_graphics_pipeline(device, &extent, render_pass, pipeline_layout);
+        let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
         let command_buffer = create_command_buffer(device, command_pool);
@@ -93,8 +95,6 @@ impl State {
             gfx_queue,
             present_queue,
             swapchain,
-            swapchain_images,
-            image_format,
             extent,
             image_views,
             render_pass,
@@ -845,7 +845,7 @@ fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass 
     };
 
     let subpass_dependency = VkSubpassDependency {
-        srcSubpass: VK_SUBPASS_EXTERNAL as u32,
+        srcSubpass: SUBPASS_EXTERNAL,
         dstSubpass: 0,
         srcStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
         srcAccessMask: 0,
@@ -877,7 +877,7 @@ fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass 
 
 fn create_graphics_pipeline(
     device: VkDevice,
-    extent: &VkExtent2D,
+    extent: VkExtent2D,
     render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
 ) -> VkPipeline {
@@ -986,7 +986,7 @@ fn create_shader_stage_info(
     sh_type: ShaderType,
     entrypoint: &CString,
 ) -> VkPipelineShaderStageCreateInfo {
-    let stage = match sh_type {
+    let stage = match &sh_type {
         ShaderType::Vertex => VK_SHADER_STAGE_VERTEX_BIT,
         ShaderType::Fragment => VK_SHADER_STAGE_FRAGMENT_BIT,
     };
@@ -1020,21 +1020,27 @@ fn create_pipeline_input_assembly() -> VkPipelineInputAssemblyStateCreateInfo {
     }
 }
 
-fn create_pipeline_viewport(extent: &VkExtent2D) -> VkViewport {
+fn create_pipeline_viewport(extent: VkExtent2D) -> VkViewport {
     VkViewport {
         x: 0.0,
         y: 0.0,
-        width: extent.width as f32,
-        height: extent.height as f32,
+        width: u32_to_f32_nowarn(extent.width),
+        height: u32_to_f32_nowarn(extent.height),
         minDepth: 0.0,
         maxDepth: 1.0,
     }
 }
 
-fn create_pipeline_scissor(extent: &VkExtent2D) -> VkRect2D {
+#[allow(clippy::cast_precision_loss)]
+fn u32_to_f32_nowarn(x: u32) -> f32 {
+    let mantissa = x & 0x007f_ffff; // 23 set bits
+    mantissa as f32
+}
+
+fn create_pipeline_scissor(extent: VkExtent2D) -> VkRect2D {
     VkRect2D {
         offset: VkOffset2D { x: 0, y: 0 },
-        extent: *extent,
+        extent,
     }
 }
 
