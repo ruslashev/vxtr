@@ -25,6 +25,7 @@ trait CheckVkError {
 pub struct State {
     window: Window,
     instance: VkInstance,
+    phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
     device: VkDevice,
     gfx_queue: VkQueue,
@@ -77,7 +78,7 @@ impl State {
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
         let (swapchain, image_format, extent) =
-            create_swapchain(&window, phys_device, device, surface);
+            create_swapchain(&window, phys_device, device, surface, true);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
@@ -93,6 +94,7 @@ impl State {
         Self {
             window,
             instance,
+            phys_device,
             surface,
             device,
             gfx_queue,
@@ -134,11 +136,10 @@ impl State {
 
         let image_index = unsafe {
             vkWaitForFences(self.device, 1, &is_rendering, 1, timeout);
-            vkResetFences(self.device, 1, &is_rendering);
 
             let mut image_index = 0;
 
-            vkAcquireNextImageKHR(
+            let result = vkAcquireNextImageKHR(
                 self.device,
                 self.swapchain,
                 timeout,
@@ -146,6 +147,15 @@ impl State {
                 ptr::null_mut(),
                 &mut image_index,
             );
+
+            if result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR {
+                self.recreate_swapchain();
+                return;
+            }
+
+            result.check_err("acquire next image");
+
+            vkResetFences(self.device, 1, &is_rendering);
 
             image_index
         };
@@ -197,6 +207,39 @@ impl State {
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
+
+    fn recreate_swapchain(&mut self) {
+        unsafe {
+            vkDeviceWaitIdle(self.device);
+        }
+
+        self.cleanup_swapchain();
+
+        let (swapchain, image_format, extent) =
+            create_swapchain(&self.window, self.phys_device, self.device, self.surface, false);
+        let swapchain_images = get_swapchain_images(self.device, swapchain);
+        let image_views = create_image_views(self.device, &swapchain_images, image_format);
+        let framebuffers = create_framebuffers(self.device, &image_views, extent, self.render_pass);
+
+        self.swapchain = swapchain;
+        self.extent = extent;
+        self.image_views = image_views;
+        self.framebuffers = framebuffers;
+    }
+
+    fn cleanup_swapchain(&self) {
+        unsafe {
+            for framebuffer in &self.framebuffers {
+                vkDestroyFramebuffer(self.device, *framebuffer, ptr::null());
+            }
+
+            for image_view in &self.image_views {
+                vkDestroyImageView(self.device, *image_view, ptr::null());
+            }
+
+            vkDestroySwapchainKHR(self.device, self.swapchain, ptr::null());
+        }
+    }
 }
 
 impl Drop for State {
@@ -216,19 +259,12 @@ impl Drop for State {
 
             vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
 
-            for framebuffer in &self.framebuffers {
-                vkDestroyFramebuffer(self.device, *framebuffer, ptr::null());
-            }
+            self.cleanup_swapchain();
 
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
             vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
 
-            for image_view in &self.image_views {
-                vkDestroyImageView(self.device, *image_view, ptr::null());
-            }
-
-            vkDestroySwapchainKHR(self.device, self.swapchain, ptr::null());
             vkDestroyDevice(self.device, ptr::null());
             vkDestroySurfaceKHR(self.instance, self.surface, ptr::null());
             vkDestroyInstance(self.instance, ptr::null());
@@ -679,8 +715,13 @@ fn choose_swapchain_surface_format(formats: &[VkSurfaceFormatKHR]) -> VkSurfaceF
     formats[0]
 }
 
-fn choose_swapchain_present_mode(present_modes: &[VkPresentModeKHR]) -> VkPresentModeKHR {
-    print_present_modes(present_modes);
+fn choose_swapchain_present_mode(
+    present_modes: &[VkPresentModeKHR],
+    verbose: bool,
+) -> VkPresentModeKHR {
+    if verbose {
+        print_present_modes(present_modes);
+    }
 
     let mode_priorities = [
         VK_PRESENT_MODE_IMMEDIATE_KHR,
@@ -727,10 +768,11 @@ fn create_swapchain(
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     surface: VkSurfaceKHR,
+    verbose: bool,
 ) -> (VkSwapchainKHR, VkFormat, VkExtent2D) {
     let swapchain_support = query_swapchain_support(phys_device, surface);
     let surface_format = choose_swapchain_surface_format(&swapchain_support.formats);
-    let present_mode = choose_swapchain_present_mode(&swapchain_support.present_modes);
+    let present_mode = choose_swapchain_present_mode(&swapchain_support.present_modes, verbose);
     let extent = choose_swapchain_extent(window, swapchain_support.capabilities);
 
     let max_image_count = swapchain_support.capabilities.maxImageCount;
