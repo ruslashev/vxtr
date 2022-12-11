@@ -22,6 +22,8 @@ valgrind: $(BIN)
 
 shaders: $(BUILT_SHADERS)
 
+build: $(BIN)
+
 $(BIN): $(BUILT_SHADERS)
 	cargo build $(CARGO_FLAGS)
 
@@ -42,4 +44,4 @@ clean:
 	rm -f $(BUILT_SHADERS)
 
 -include $(DEP)
-.PHONY: run valgrind shaders clippy_all clippy_pedantic fmt clean
+.PHONY: run valgrind shaders build clippy_all clippy_pedantic fmt clean
