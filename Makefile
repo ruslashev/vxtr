@@ -17,6 +17,9 @@ endif
 run: $(BIN)
 	$(BIN)
 
+valgrind: $(BIN)
+	valgrind --leak-check=full --show-leak-kinds=all $(BIN)
+
 shaders: $(BUILT_SHADERS)
 
 $(BIN): $(BUILT_SHADERS)
@@ -39,4 +42,4 @@ clean:
 	rm -f $(BUILT_SHADERS)
 
 -include $(DEP)
-.PHONY: run shaders clippy_all clippy_pedantic fmt clean
+.PHONY: run valgrind shaders clippy_all clippy_pedantic fmt clean
