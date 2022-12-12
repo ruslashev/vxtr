@@ -87,13 +87,13 @@ impl State {
         let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
-        let command_buffers = create_command_buffers(device, command_pool);
+        let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
         let vertices = [0.0, -0.5, 0.5, 0.5, -0.5, 0.5];
 
         let (vertex_buffer, vertex_buffer_memory) =
-            create_vertex_buffer(phys_device, device, &vertices);
+            create_vertex_buffer(phys_device, device, command_pool, gfx_queue, &vertices);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -1289,15 +1289,19 @@ fn create_command_pool(device: VkDevice, graphics_queue_family: u32) -> VkComman
     }
 }
 
-fn create_command_buffers(device: VkDevice, command_pool: VkCommandPool) -> Vec<VkCommandBuffer> {
-    let mut command_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-    command_buffers.resize(MAX_FRAMES_IN_FLIGHT, ptr::null_mut());
+fn create_command_buffers(
+    device: VkDevice,
+    command_pool: VkCommandPool,
+    count: usize,
+) -> Vec<VkCommandBuffer> {
+    let mut command_buffers = Vec::with_capacity(count);
+    command_buffers.resize(count, ptr::null_mut());
 
     let alloc_info = VkCommandBufferAllocateInfo {
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         commandPool: command_pool,
         level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        commandBufferCount: command_buffers.len().try_into().unwrap(),
+        commandBufferCount: count.try_into().unwrap(),
         ..Default::default()
     };
 
@@ -1499,21 +1503,38 @@ fn find_memory_type(
 fn create_vertex_buffer(
     phys_device: VkPhysicalDevice,
     device: VkDevice,
+    command_pool: VkCommandPool,
+    queue: VkQueue,
     vertices: &[f32],
 ) -> (VkBuffer, VkDeviceMemory) {
-    let vert_size_bytes = vertices.len() * size_of::<f32>();
+    let vert_size_bytes: u64 = (vertices.len() * size_of::<f32>()).try_into().unwrap();
 
-    let (buffer, memory) = create_buffer(
+    let (staging_buffer, staging_memory) = create_buffer(
         phys_device,
         device,
-        vert_size_bytes.try_into().unwrap(),
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        vert_size_bytes,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
     );
 
-    upload_to_buffer_memory(device, memory, vertices);
+    upload_to_buffer_memory(device, staging_memory, vertices);
 
-    (buffer, memory)
+    let (vert_buffer, vert_memory) = create_buffer(
+        phys_device,
+        device,
+        vert_size_bytes,
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+    );
+
+    copy_buffers(device, command_pool, queue, staging_buffer, vert_buffer, vert_size_bytes);
+
+    unsafe {
+        vkDestroyBuffer(device, staging_buffer, ptr::null());
+        vkFreeMemory(device, staging_memory, ptr::null());
+    }
+
+    (vert_buffer, vert_memory)
 }
 
 fn upload_to_buffer_memory<T: Copy>(device: VkDevice, memory: VkDeviceMemory, data: &[T]) {
@@ -1541,6 +1562,48 @@ fn upload_to_buffer_memory<T: Copy>(device: VkDevice, memory: VkDeviceMemory, da
         vkFlushMappedMemoryRanges(device, 1, &memory_range).check_err("flush mapped memory");
 
         vkUnmapMemory(device, memory);
+    }
+}
+
+fn copy_buffers(
+    device: VkDevice,
+    command_pool: VkCommandPool,
+    queue: VkQueue,
+    src: VkBuffer,
+    dst: VkBuffer,
+    size: u64,
+) {
+    let cmd_buffer = create_command_buffers(device, command_pool, 1)[0];
+
+    let begin_info = VkCommandBufferBeginInfo {
+        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        ..Default::default()
+    };
+
+    let copy_region = VkBufferCopy {
+        size,
+        ..Default::default()
+    };
+
+    let submit_info = VkSubmitInfo {
+        sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        commandBufferCount: 1,
+        pCommandBuffers: &cmd_buffer,
+        ..Default::default()
+    };
+
+    unsafe {
+        vkBeginCommandBuffer(cmd_buffer, &begin_info);
+
+        vkCmdCopyBuffer(cmd_buffer, src, dst, 1, &copy_region);
+
+        vkEndCommandBuffer(cmd_buffer);
+
+        vkQueueSubmit(queue, 1, &submit_info, ptr::null_mut());
+        vkQueueWaitIdle(queue);
+
+        vkFreeCommandBuffers(device, command_pool, 1, &cmd_buffer);
     }
 }
 
