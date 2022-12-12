@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
-use std::ffi::{c_char, CStr, CString};
-use std::mem::MaybeUninit;
+use std::ffi::{c_char, c_void, CStr, CString};
+use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -35,6 +35,9 @@ pub struct State {
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
     framebuffers: Vec<VkFramebuffer>,
+    vertex_buffer: VkBuffer,
+    vertex_buffer_memory: VkDeviceMemory,
+    vertex_count: u32,
     command_pool: VkCommandPool,
     command_buffers: Vec<VkCommandBuffer>,
     image_available: Vec<VkSemaphore>,
@@ -87,6 +90,13 @@ impl State {
         let command_buffers = create_command_buffers(device, command_pool);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
+        let vertices = [0.0, -0.5, 0.5, 0.5, -0.5, 0.5];
+
+        let vertex_buffer = create_empty_vertex_buffer(device, &vertices);
+        let vertex_buffer_memory = allocate_vertex_buffer(phys_device, device, vertex_buffer);
+
+        upload_vertices(device, vertex_buffer, vertex_buffer_memory, &vertices);
+
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
         Self {
@@ -104,6 +114,9 @@ impl State {
             pipeline_layout,
             pipeline,
             framebuffers,
+            vertex_buffer,
+            vertex_buffer_memory,
+            vertex_count: vertices.len().try_into().unwrap(),
             command_pool,
             command_buffers,
             image_available,
@@ -153,6 +166,8 @@ impl State {
             self.render_pass,
             self.extent,
             self.pipeline,
+            self.vertex_buffer,
+            self.vertex_count,
         );
 
         let wait_semaphores = [image_available];
@@ -253,6 +268,9 @@ impl Drop for State {
             vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
 
             self.cleanup_swapchain();
+
+            vkDestroyBuffer(self.device, self.vertex_buffer, ptr::null());
+            vkFreeMemory(self.device, self.vertex_buffer_memory, ptr::null());
 
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
@@ -965,7 +983,10 @@ fn create_graphics_pipeline(
         create_shader_stage_info(frag_shader_mod, ShaderType::Fragment, &entrypoint_main),
     ];
 
-    let vertex_input = create_pipeline_vertex_input_info();
+    let binding_desc = get_binding_description();
+    let attr_desc = get_attribute_description();
+
+    let vertex_input = create_pipeline_vertex_input_info(&binding_desc, &attr_desc);
 
     let input_assembly = create_pipeline_input_assembly();
 
@@ -1071,13 +1092,35 @@ fn create_shader_stage_info(
     }
 }
 
-fn create_pipeline_vertex_input_info() -> VkPipelineVertexInputStateCreateInfo {
+fn get_binding_description() -> VkVertexInputBindingDescription {
+    let vec2_stride = 2 * size_of::<f32>();
+
+    VkVertexInputBindingDescription {
+        binding: 0,
+        stride: vec2_stride.try_into().unwrap(),
+        inputRate: VK_VERTEX_INPUT_RATE_VERTEX,
+    }
+}
+
+fn get_attribute_description() -> VkVertexInputAttributeDescription {
+    VkVertexInputAttributeDescription {
+        location: 0,
+        binding: 0,
+        format: VK_FORMAT_R32G32_SFLOAT,
+        offset: 0,
+    }
+}
+
+fn create_pipeline_vertex_input_info(
+    binding_desc: &VkVertexInputBindingDescription,
+    attr_desc: &VkVertexInputAttributeDescription,
+) -> VkPipelineVertexInputStateCreateInfo {
     VkPipelineVertexInputStateCreateInfo {
         sType: VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        vertexBindingDescriptionCount: 0,
-        pVertexBindingDescriptions: ptr::null_mut(),
-        vertexAttributeDescriptionCount: 0,
-        pVertexAttributeDescriptions: ptr::null_mut(),
+        vertexBindingDescriptionCount: 1,
+        pVertexBindingDescriptions: binding_desc,
+        vertexAttributeDescriptionCount: 1,
+        pVertexAttributeDescriptions: attr_desc,
         ..Default::default()
     }
 }
@@ -1274,6 +1317,8 @@ fn record_commands_to_buffer(
     render_pass: VkRenderPass,
     extent: VkExtent2D,
     gfx_pipeline: VkPipeline,
+    vertex_buffer: VkBuffer,
+    vertex_count: u32,
 ) {
     let begin_info = VkCommandBufferBeginInfo {
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1299,6 +1344,9 @@ fn record_commands_to_buffer(
         ..Default::default()
     };
 
+    let vertex_buffers = [vertex_buffer];
+    let offsets = [0];
+
     unsafe {
         vkResetCommandBuffer(cmd_buffer, 0);
 
@@ -1309,7 +1357,9 @@ fn record_commands_to_buffer(
 
         vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
 
-        vkCmdDraw(cmd_buffer, 3, 1, 0, 0);
+        vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
+
+        vkCmdDraw(cmd_buffer, vertex_count, 1, 0, 0);
 
         vkCmdEndRenderPass(cmd_buffer);
 
@@ -1361,6 +1411,130 @@ fn create_fence(device: VkDevice) -> VkFence {
             .check_err("create fence");
 
         fence.assume_init()
+    }
+}
+
+fn create_empty_vertex_buffer(device: VkDevice, vertices: &[f32]) -> VkBuffer {
+    let size_bytes = vertices.len() * size_of::<f32>();
+
+    let create_info = VkBufferCreateInfo {
+        sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        size: size_bytes.try_into().unwrap(),
+        usage: VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        sharingMode: VK_SHARING_MODE_EXCLUSIVE,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut buffer = MaybeUninit::<VkBuffer>::uninit();
+
+        vkCreateBuffer(device, &create_info, ptr::null_mut(), buffer.as_mut_ptr())
+            .check_err("create buffer");
+
+        buffer.assume_init()
+    }
+}
+
+fn allocate_vertex_buffer(
+    phys_device: VkPhysicalDevice,
+    device: VkDevice,
+    vertex_buffer: VkBuffer,
+) -> VkDeviceMemory {
+    let mem_requirements = unsafe {
+        let mut requirements = MaybeUninit::<VkMemoryRequirements>::uninit();
+        vkGetBufferMemoryRequirements(device, vertex_buffer, requirements.as_mut_ptr());
+        requirements.assume_init()
+    };
+
+    let memory_type = find_memory_type(
+        phys_device,
+        mem_requirements.memoryTypeBits,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+    )
+    .expect("failed to find appropriate memory type");
+
+    let alloc_info = VkMemoryAllocateInfo {
+        sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        allocationSize: mem_requirements.size,
+        memoryTypeIndex: memory_type,
+        ..Default::default()
+    };
+
+    unsafe {
+        let mut buffer_memory = MaybeUninit::<VkDeviceMemory>::uninit();
+
+        vkAllocateMemory(device, &alloc_info, ptr::null_mut(), buffer_memory.as_mut_ptr())
+            .check_err("allocate memory");
+
+        buffer_memory.assume_init()
+    }
+}
+
+fn find_memory_type(
+    phys_device: VkPhysicalDevice,
+    req_type: u32,
+    req_properties: u32,
+) -> Option<u32> {
+    let mem_properties = unsafe {
+        let mut properties = MaybeUninit::<VkPhysicalDeviceMemoryProperties>::uninit();
+        vkGetPhysicalDeviceMemoryProperties(phys_device, properties.as_mut_ptr());
+        properties.assume_init()
+    };
+
+    for i in 0..mem_properties.memoryTypeCount {
+        if req_type & (1 << i) == 0 {
+            continue;
+        }
+
+        if mem_properties.memoryTypes[i as usize].propertyFlags & req_properties == 0 {
+            continue;
+        }
+
+        return Some(i);
+    }
+
+    None
+}
+
+fn upload_vertices(
+    device: VkDevice,
+    vertex_buffer: VkBuffer,
+    vertex_buffer_memory: VkDeviceMemory,
+    vertices: &[f32],
+) {
+    let size_bytes = vertices.len() * size_of::<f32>();
+
+    let memory_range = VkMappedMemoryRange {
+        sType: VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+        memory: vertex_buffer_memory,
+        offset: 0,
+        size: size_bytes.try_into().unwrap(),
+        ..Default::default()
+    };
+
+    unsafe {
+        vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
+
+        let ptr: *mut f32 = ptr::null_mut();
+        let mut void_ptr = ptr.cast::<c_void>();
+
+        vkMapMemory(
+            device,
+            vertex_buffer_memory,
+            0,
+            size_bytes.try_into().unwrap(),
+            0,
+            &mut void_ptr,
+        );
+
+        let out_ptr = void_ptr.cast::<f32>();
+
+        let slice = std::slice::from_raw_parts_mut(out_ptr, vertices.len());
+        slice.copy_from_slice(vertices);
+
+        vkFlushMappedMemoryRanges(device, 1, &memory_range);
+
+        vkUnmapMemory(device, vertex_buffer_memory);
     }
 }
 
