@@ -14,10 +14,27 @@ fn main() {
 
     let mut state = State::new(window.as_inner());
 
+    let mut minimized = false;
+
     'main_loop: while window.running {
+        if minimized {
+            Window::block_until_event();
+        }
+
         for event in window.poll_events() {
-            if let Event::KeyPress(Key::Escape) = event {
-                break 'main_loop;
+            match event {
+                Event::KeyPress(Key::Escape) => break 'main_loop,
+                Event::WindowResize(width, height) => {
+                    if width == 0 || height == 0 {
+                        minimized = true;
+                        continue;
+                    }
+
+                    minimized = false;
+
+                    state.handle_resize(width, height);
+                }
+                _ => (),
             }
         }
 

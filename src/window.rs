@@ -16,6 +16,7 @@ pub struct Window {
 pub enum Event {
     KeyPress(Key),
     KeyRelease(Key),
+    WindowResize(i32, i32),
 }
 
 #[derive(Debug)]
@@ -31,7 +32,7 @@ impl Window {
             glfwInit();
 
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+            glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
 
             let title_cstr = CString::new(title).unwrap();
 
@@ -53,6 +54,7 @@ impl Window {
         unsafe {
             glfwSetWindowUserPointer(self.window, self_ptr);
             glfwSetKeyCallback(self.window, Some(key_callback));
+            glfwSetWindowSizeCallback(self.window, Some(window_size_callback));
         }
     }
 
@@ -70,6 +72,12 @@ impl Window {
 
     pub fn as_inner(&self) -> *mut GLFWwindow {
         self.window
+    }
+
+    pub fn block_until_event() {
+        unsafe {
+            glfwWaitEvents();
+        }
     }
 }
 
@@ -106,13 +114,23 @@ extern "C" fn key_callback(
         Event::KeyRelease(key)
     };
 
+    push_event_to_window(glfw_window, event);
+}
+
+extern "C" fn window_size_callback(glfw_window: *mut GLFWwindow, width: i32, height: i32) {
+    let event = Event::WindowResize(width, height);
+
+    push_event_to_window(glfw_window, event);
+}
+
+fn push_event_to_window(glfw_window: *mut GLFWwindow, event: Event) {
     unsafe {
         let window_ptr = glfwGetWindowUserPointer(glfw_window).cast::<Window>();
 
         if let Some(window) = window_ptr.as_mut() {
             window.events.push(event);
         } else {
-            println!("key_callback: null events ptr");
+            println!("push_event_to_window: null window ptr, event = {:?}", event);
         }
     }
 }

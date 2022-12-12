@@ -227,6 +227,10 @@ impl State {
             vkDestroySwapchainKHR(self.device, self.swapchain, ptr::null());
         }
     }
+
+    pub fn handle_resize(&mut self, _width: i32, _height: i32) {
+        self.recreate_swapchain();
+    }
 }
 
 impl Drop for State {
