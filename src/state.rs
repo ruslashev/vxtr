@@ -403,10 +403,13 @@ fn get_phys_device(instance: VkInstance, surface: VkSurfaceKHR) -> VkPhysicalDev
     choose_phys_device(&devices, surface)
 }
 
-fn choose_phys_device(devices: &[VkPhysicalDevice], surface: VkSurfaceKHR) -> VkPhysicalDevice {
-    let mut devices_and_types = Vec::with_capacity(devices.len());
+fn choose_phys_device(
+    phys_devices: &[VkPhysicalDevice],
+    surface: VkSurfaceKHR,
+) -> VkPhysicalDevice {
+    let mut devices_and_types = Vec::with_capacity(phys_devices.len());
 
-    for dev in devices {
+    for dev in phys_devices {
         let properties = get_device_properties(*dev);
         devices_and_types.push((*dev, properties.deviceType));
     }
@@ -437,11 +440,11 @@ fn first_device_of_type(
     dt.iter().find(|(_, type_)| *type_ == type_predicate).map(|(dev, _)| *dev)
 }
 
-fn is_device_suitable(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
-    let queue_families = get_queue_families(device, surface);
-    let extensions_supported = supports_required_extensions(device);
+fn is_device_suitable(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
+    let queue_families = get_queue_families(phys_device, surface);
+    let extensions_supported = supports_required_extensions(phys_device);
     let swapchain_adequate = if extensions_supported {
-        let swapchain_support = query_swapchain_support(device, surface);
+        let swapchain_support = query_swapchain_support(phys_device, surface);
         !swapchain_support.formats.is_empty() && !swapchain_support.present_modes.is_empty()
     } else {
         false
@@ -450,13 +453,13 @@ fn is_device_suitable(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
     queue_families.graphics.is_some() && queue_families.present.is_some() && swapchain_adequate
 }
 
-fn supports_required_extensions(device: VkPhysicalDevice) -> bool {
+fn supports_required_extensions(phys_device: VkPhysicalDevice) -> bool {
     let required_extensions = get_required_extensions();
 
     let mut support_found = Vec::with_capacity(required_extensions.len());
     support_found.resize(required_extensions.len(), false);
 
-    let supported_extensions = get_supported_extensions(device);
+    let supported_extensions = get_supported_extensions(phys_device);
 
     for (i, req_ext) in required_extensions.into_iter().enumerate() {
         for supp_ext in &supported_extensions {
@@ -480,17 +483,17 @@ fn get_required_extensions() -> Vec<CString> {
         .collect()
 }
 
-fn get_supported_extensions(device: VkPhysicalDevice) -> Vec<VkExtensionProperties> {
+fn get_supported_extensions(phys_device: VkPhysicalDevice) -> Vec<VkExtensionProperties> {
     unsafe {
         let mut count = 0;
-        vkEnumerateDeviceExtensionProperties(device, ptr::null(), &mut count, ptr::null_mut())
+        vkEnumerateDeviceExtensionProperties(phys_device, ptr::null(), &mut count, ptr::null_mut())
             .check_err("get number of supported extensions");
 
         let mut extensions = Vec::with_capacity(count as usize);
         extensions.resize(count as usize, VkExtensionProperties::default());
 
         vkEnumerateDeviceExtensionProperties(
-            device,
+            phys_device,
             ptr::null(),
             &mut count,
             extensions.as_mut_ptr(),
@@ -501,40 +504,40 @@ fn get_supported_extensions(device: VkPhysicalDevice) -> Vec<VkExtensionProperti
     }
 }
 
-fn get_device_properties(device: VkPhysicalDevice) -> VkPhysicalDeviceProperties {
+fn get_device_properties(phys_device: VkPhysicalDevice) -> VkPhysicalDeviceProperties {
     unsafe {
         let mut p = MaybeUninit::<VkPhysicalDeviceProperties>::uninit();
-        vkGetPhysicalDeviceProperties(device, p.as_mut_ptr());
+        vkGetPhysicalDeviceProperties(phys_device, p.as_mut_ptr());
         p.assume_init()
     }
 }
 
-fn get_device_features(device: VkPhysicalDevice) -> VkPhysicalDeviceFeatures {
+fn get_device_features(phys_device: VkPhysicalDevice) -> VkPhysicalDeviceFeatures {
     unsafe {
         let mut f = MaybeUninit::<VkPhysicalDeviceFeatures>::uninit();
-        vkGetPhysicalDeviceFeatures(device, f.as_mut_ptr());
+        vkGetPhysicalDeviceFeatures(phys_device, f.as_mut_ptr());
         f.assume_init()
     }
 }
 
-fn get_device_name(device: VkPhysicalDevice) -> String {
-    let properties = get_device_properties(device);
+fn get_device_name(phys_device: VkPhysicalDevice) -> String {
+    let properties = get_device_properties(phys_device);
     let cstr = unsafe { CStr::from_ptr(properties.deviceName.as_ptr()) };
 
     cstr.to_str().expect("invalid device name").to_string()
 }
 
-fn get_queue_families(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> QueueFamilies {
+fn get_queue_families(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> QueueFamilies {
     let mut families = QueueFamilies::default();
 
     let family_properties = unsafe {
         let mut count = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &mut count, ptr::null_mut());
+        vkGetPhysicalDeviceQueueFamilyProperties(phys_device, &mut count, ptr::null_mut());
 
         let mut families = Vec::with_capacity(count as usize);
         families.resize(count as usize, VkQueueFamilyProperties::default());
 
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &mut count, families.as_mut_ptr());
+        vkGetPhysicalDeviceQueueFamilyProperties(phys_device, &mut count, families.as_mut_ptr());
 
         families
     };
@@ -561,7 +564,7 @@ fn get_queue_families(device: VkPhysicalDevice, surface: VkSurfaceKHR) -> QueueF
 
         let mut present_support = 0;
         unsafe {
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, idx, surface, &mut present_support)
+            vkGetPhysicalDeviceSurfaceSupportKHR(phys_device, idx, surface, &mut present_support)
                 .check_err("get surface presentation support");
         }
 
@@ -650,25 +653,30 @@ fn get_queue_for_family_idx(device: VkDevice, family_idx: u32) -> VkQueue {
 }
 
 fn query_swapchain_support(
-    device: VkPhysicalDevice,
+    phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
 ) -> SwapchainSupportDetails {
     let mut details = SwapchainSupportDetails::default();
 
     unsafe {
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &mut details.capabilities)
+        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_device, surface, &mut details.capabilities)
             .check_err("get physical device surface capabilities");
     }
 
     details.formats = unsafe {
         let mut count = 0;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &mut count, ptr::null_mut());
+        vkGetPhysicalDeviceSurfaceFormatsKHR(phys_device, surface, &mut count, ptr::null_mut());
 
         let mut formats = Vec::new();
 
         if count > 0 {
             formats.resize(count as usize, VkSurfaceFormatKHR::default());
-            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &mut count, formats.as_mut_ptr());
+            vkGetPhysicalDeviceSurfaceFormatsKHR(
+                phys_device,
+                surface,
+                &mut count,
+                formats.as_mut_ptr(),
+            );
         }
 
         formats
@@ -676,14 +684,19 @@ fn query_swapchain_support(
 
     details.present_modes = unsafe {
         let mut count = 0;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &mut count, ptr::null_mut());
+        vkGetPhysicalDeviceSurfacePresentModesKHR(
+            phys_device,
+            surface,
+            &mut count,
+            ptr::null_mut(),
+        );
 
         let mut modes = Vec::new();
 
         if count > 0 {
             modes.resize(count as usize, VkPresentModeKHR::default());
             vkGetPhysicalDeviceSurfacePresentModesKHR(
-                device,
+                phys_device,
                 surface,
                 &mut count,
                 modes.as_mut_ptr(),
@@ -1351,12 +1364,12 @@ fn create_fence(device: VkDevice) -> VkFence {
     }
 }
 
-fn print_devices(devices: &[VkPhysicalDevice], verbose: bool) {
+fn print_devices(phys_devices: &[VkPhysicalDevice], verbose: bool) {
     println!("Devices:");
 
-    for (i, device) in devices.iter().enumerate() {
-        let properties = get_device_properties(*device);
-        let features = get_device_features(*device);
+    for (i, phys_device) in phys_devices.iter().enumerate() {
+        let properties = get_device_properties(*phys_device);
+        let features = get_device_features(*phys_device);
 
         print_device_properties(&properties, i, verbose);
 
