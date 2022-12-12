@@ -179,16 +179,7 @@ impl State {
             image_index
         };
 
-        record_commands_to_buffer(
-            command_buffer,
-            self.framebuffers[image_index as usize],
-            self.render_pass,
-            self.extent,
-            self.pipeline,
-            self.vertex_buffer,
-            self.index_buffer,
-            self.index_count,
-        );
+        self.record_commands_to_buffer(command_buffer, self.framebuffers[image_index as usize]);
 
         let wait_semaphores = [image_available];
         let wait_stages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
@@ -228,6 +219,56 @@ impl State {
         }
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+    }
+
+    fn record_commands_to_buffer(&self, cmd_buffer: VkCommandBuffer, framebuffer: VkFramebuffer) {
+        let begin_info = VkCommandBufferBeginInfo {
+            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            ..Default::default()
+        };
+
+        let clear_color = VkClearValue {
+            color: VkClearColorValue {
+                float32: [0.0, 0.0, 0.0, 1.0],
+            },
+        };
+
+        let render_pass_info = VkRenderPassBeginInfo {
+            sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
+            renderPass: self.render_pass,
+            framebuffer,
+            renderArea: VkRect2D {
+                offset: VkOffset2D { x: 0, y: 0 },
+                extent: self.extent,
+            },
+            clearValueCount: 1,
+            pClearValues: &clear_color,
+            ..Default::default()
+        };
+
+        let vertex_buffers = [self.vertex_buffer];
+        let offsets = [0];
+
+        unsafe {
+            vkResetCommandBuffer(cmd_buffer, 0);
+
+            vkBeginCommandBuffer(cmd_buffer, &begin_info)
+                .check_err("begin recording to command buffer");
+
+            vkCmdBeginRenderPass(cmd_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+
+            vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline);
+
+            vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
+
+            vkCmdBindIndexBuffer(cmd_buffer, self.index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+            vkCmdDrawIndexed(cmd_buffer, self.index_count, 1, 0, 0, 0);
+
+            vkCmdEndRenderPass(cmd_buffer);
+
+            vkEndCommandBuffer(cmd_buffer).check_err("end command buffer recording");
+        }
     }
 
     fn recreate_swapchain(&mut self) {
@@ -1336,65 +1377,6 @@ fn create_command_buffers(
     }
 
     command_buffers
-}
-
-fn record_commands_to_buffer(
-    cmd_buffer: VkCommandBuffer,
-    framebuffer: VkFramebuffer,
-    render_pass: VkRenderPass,
-    extent: VkExtent2D,
-    gfx_pipeline: VkPipeline,
-    vertex_buffer: VkBuffer,
-    index_buffer: VkBuffer,
-    index_count: u32,
-) {
-    let begin_info = VkCommandBufferBeginInfo {
-        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        ..Default::default()
-    };
-
-    let clear_color = VkClearValue {
-        color: VkClearColorValue {
-            float32: [0.0, 0.0, 0.0, 1.0],
-        },
-    };
-
-    let render_pass_info = VkRenderPassBeginInfo {
-        sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        renderPass: render_pass,
-        framebuffer,
-        renderArea: VkRect2D {
-            offset: VkOffset2D { x: 0, y: 0 },
-            extent,
-        },
-        clearValueCount: 1,
-        pClearValues: &clear_color,
-        ..Default::default()
-    };
-
-    let vertex_buffers = [vertex_buffer];
-    let offsets = [0];
-
-    unsafe {
-        vkResetCommandBuffer(cmd_buffer, 0);
-
-        vkBeginCommandBuffer(cmd_buffer, &begin_info)
-            .check_err("begin recording to command buffer");
-
-        vkCmdBeginRenderPass(cmd_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-
-        vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, gfx_pipeline);
-
-        vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
-
-        vkCmdBindIndexBuffer(cmd_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
-
-        vkCmdDrawIndexed(cmd_buffer, index_count, 1, 0, 0, 0);
-
-        vkCmdEndRenderPass(cmd_buffer);
-
-        vkEndCommandBuffer(cmd_buffer).check_err("end command buffer recording");
-    }
 }
 
 fn create_sync_objects(device: VkDevice) -> (Vec<VkSemaphore>, Vec<VkSemaphore>, Vec<VkFence>) {
