@@ -10,5 +10,8 @@ fn main() {
     let mut window = Window::new(800, 600, "Vulkan tutorial");
     let mut state = State::new(&mut window);
 
-    state.main_loop();
+    while state.window.running {
+        state.window.poll_events();
+        state.present();
+    }
 }

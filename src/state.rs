@@ -23,7 +23,7 @@ trait CheckVkError {
 }
 
 pub struct State<'w> {
-    window: &'w mut Window,
+    pub window: &'w mut Window,
     instance: VkInstance,
     phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
@@ -115,18 +115,7 @@ impl<'w> State<'w> {
         }
     }
 
-    pub fn main_loop(&mut self) {
-        while self.window.running {
-            self.window.poll_events();
-            self.present();
-        }
-
-        unsafe {
-            vkDeviceWaitIdle(self.device);
-        }
-    }
-
-    fn present(&mut self) {
+    pub fn present(&mut self) {
         let timeout = u64::MAX;
 
         let command_buffer = self.command_buffers[self.current_frame];
@@ -245,6 +234,8 @@ impl<'w> State<'w> {
 impl Drop for State<'_> {
     fn drop(&mut self) {
         unsafe {
+            vkDeviceWaitIdle(self.device);
+
             for sem in &self.image_available {
                 vkDestroySemaphore(self.device, *sem, ptr::null());
             }
