@@ -27,7 +27,7 @@ fn main() {
                 Event::WindowResize(width, height) => {
                     if width == 0 || height == 0 {
                         minimized = true;
-                        continue;
+                        continue 'main_loop;
                     }
 
                     minimized = false;

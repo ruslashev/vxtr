@@ -167,12 +167,14 @@ impl State {
                 &mut image_index,
             );
 
-            if result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR {
+            if result == VK_ERROR_OUT_OF_DATE_KHR {
                 self.recreate_swapchain();
                 return;
             }
 
-            result.check_err("acquire next image");
+            if result != VK_SUBOPTIMAL_KHR {
+                result.check_err("acquire next image");
+            }
 
             vkResetFences(self.device, 1, &is_rendering);
 
