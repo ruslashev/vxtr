@@ -92,10 +92,8 @@ impl State {
 
         let vertices = [0.0, -0.5, 0.5, 0.5, -0.5, 0.5];
 
-        let vertex_buffer = create_empty_vertex_buffer(device, &vertices);
-        let vertex_buffer_memory = allocate_vertex_buffer(phys_device, device, vertex_buffer);
-
-        upload_vertices(device, vertex_buffer, vertex_buffer_memory, &vertices);
+        let (vertex_buffer, vertex_buffer_memory) =
+            create_vertex_buffer(phys_device, device, &vertices);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -1414,44 +1412,40 @@ fn create_fence(device: VkDevice) -> VkFence {
     }
 }
 
-fn create_empty_vertex_buffer(device: VkDevice, vertices: &[f32]) -> VkBuffer {
-    let size_bytes = vertices.len() * size_of::<f32>();
-
+fn create_buffer(
+    phys_device: VkPhysicalDevice,
+    device: VkDevice,
+    size: u64,
+    usage: u32,
+    properties: u32,
+) -> (VkBuffer, VkDeviceMemory) {
     let create_info = VkBufferCreateInfo {
         sType: VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        size: size_bytes.try_into().unwrap(),
-        usage: VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        size,
+        usage,
         sharingMode: VK_SHARING_MODE_EXCLUSIVE,
         ..Default::default()
     };
 
-    unsafe {
+    let buffer = unsafe {
         let mut buffer = MaybeUninit::<VkBuffer>::uninit();
 
         vkCreateBuffer(device, &create_info, ptr::null_mut(), buffer.as_mut_ptr())
             .check_err("create buffer");
 
         buffer.assume_init()
-    }
-}
+    };
 
-fn allocate_vertex_buffer(
-    phys_device: VkPhysicalDevice,
-    device: VkDevice,
-    vertex_buffer: VkBuffer,
-) -> VkDeviceMemory {
     let mem_requirements = unsafe {
         let mut requirements = MaybeUninit::<VkMemoryRequirements>::uninit();
-        vkGetBufferMemoryRequirements(device, vertex_buffer, requirements.as_mut_ptr());
+
+        vkGetBufferMemoryRequirements(device, buffer, requirements.as_mut_ptr());
+
         requirements.assume_init()
     };
 
-    let memory_type = find_memory_type(
-        phys_device,
-        mem_requirements.memoryTypeBits,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-    )
-    .expect("failed to find appropriate memory type");
+    let memory_type = find_memory_type(phys_device, mem_requirements.memoryTypeBits, properties)
+        .expect("failed to find appropriate memory type");
 
     let alloc_info = VkMemoryAllocateInfo {
         sType: VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
@@ -1460,14 +1454,20 @@ fn allocate_vertex_buffer(
         ..Default::default()
     };
 
-    unsafe {
-        let mut buffer_memory = MaybeUninit::<VkDeviceMemory>::uninit();
+    let memory = unsafe {
+        let mut memory = MaybeUninit::<VkDeviceMemory>::uninit();
 
-        vkAllocateMemory(device, &alloc_info, ptr::null_mut(), buffer_memory.as_mut_ptr())
+        vkAllocateMemory(device, &alloc_info, ptr::null_mut(), memory.as_mut_ptr())
             .check_err("allocate memory");
 
-        buffer_memory.assume_init()
+        memory.assume_init()
+    };
+
+    unsafe {
+        vkBindBufferMemory(device, buffer, memory, 0);
     }
+
+    (buffer, memory)
 }
 
 fn find_memory_type(
@@ -1496,45 +1496,51 @@ fn find_memory_type(
     None
 }
 
-fn upload_vertices(
+fn create_vertex_buffer(
+    phys_device: VkPhysicalDevice,
     device: VkDevice,
-    vertex_buffer: VkBuffer,
-    vertex_buffer_memory: VkDeviceMemory,
     vertices: &[f32],
-) {
-    let size_bytes = vertices.len() * size_of::<f32>();
+) -> (VkBuffer, VkDeviceMemory) {
+    let vert_size_bytes = vertices.len() * size_of::<f32>();
+
+    let (buffer, memory) = create_buffer(
+        phys_device,
+        device,
+        vert_size_bytes.try_into().unwrap(),
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+    );
+
+    upload_to_buffer_memory(device, memory, vertices);
+
+    (buffer, memory)
+}
+
+fn upload_to_buffer_memory<T: Copy>(device: VkDevice, memory: VkDeviceMemory, data: &[T]) {
+    let size_bytes: u64 = (data.len() * size_of::<T>()).try_into().unwrap();
 
     let memory_range = VkMappedMemoryRange {
         sType: VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        memory: vertex_buffer_memory,
+        memory,
         offset: 0,
-        size: size_bytes.try_into().unwrap(),
+        size: size_bytes,
         ..Default::default()
     };
 
     unsafe {
-        vkBindBufferMemory(device, vertex_buffer, vertex_buffer_memory, 0);
-
-        let ptr: *mut f32 = ptr::null_mut();
+        let ptr: *mut T = ptr::null_mut();
         let mut void_ptr = ptr.cast::<c_void>();
 
-        vkMapMemory(
-            device,
-            vertex_buffer_memory,
-            0,
-            size_bytes.try_into().unwrap(),
-            0,
-            &mut void_ptr,
-        );
+        vkMapMemory(device, memory, 0, size_bytes, 0, &mut void_ptr).check_err("map memory");
 
-        let out_ptr = void_ptr.cast::<f32>();
+        let out_ptr = void_ptr.cast::<T>();
 
-        let slice = std::slice::from_raw_parts_mut(out_ptr, vertices.len());
-        slice.copy_from_slice(vertices);
+        let slice = std::slice::from_raw_parts_mut(out_ptr, data.len());
+        slice.copy_from_slice(data);
 
-        vkFlushMappedMemoryRanges(device, 1, &memory_range);
+        vkFlushMappedMemoryRanges(device, 1, &memory_range).check_err("flush mapped memory");
 
-        vkUnmapMemory(device, vertex_buffer_memory);
+        vkUnmapMemory(device, memory);
     }
 }
 
