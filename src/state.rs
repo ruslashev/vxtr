@@ -22,8 +22,8 @@ trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
 
-pub struct State {
-    window: Window,
+pub struct State<'w> {
+    window: &'w mut Window,
     instance: VkInstance,
     phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
@@ -68,17 +68,17 @@ enum ShaderType {
     Fragment,
 }
 
-impl State {
-    pub fn new(window: Window) -> Self {
+impl<'w> State<'w> {
+    pub fn new(window: &'w mut Window) -> Self {
         let instance = create_instance();
-        let surface = create_surface(instance, &window);
+        let surface = create_surface(instance, window);
         let phys_device = get_phys_device(instance, surface);
         let queue_families = get_queue_families(phys_device, surface);
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
         let (swapchain, image_format, extent) =
-            create_swapchain(&window, phys_device, device, surface, true);
+            create_swapchain(window, phys_device, device, surface, true);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
@@ -216,7 +216,7 @@ impl State {
         self.cleanup_swapchain();
 
         let (swapchain, image_format, extent) =
-            create_swapchain(&self.window, self.phys_device, self.device, self.surface, false);
+            create_swapchain(self.window, self.phys_device, self.device, self.surface, false);
         let swapchain_images = get_swapchain_images(self.device, swapchain);
         let image_views = create_image_views(self.device, &swapchain_images, image_format);
         let framebuffers = create_framebuffers(self.device, &image_views, extent, self.render_pass);
@@ -242,7 +242,7 @@ impl State {
     }
 }
 
-impl Drop for State {
+impl Drop for State<'_> {
     fn drop(&mut self) {
         unsafe {
             for sem in &self.image_available {
