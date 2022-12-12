@@ -4,8 +4,6 @@ use std::ffi::{c_char, CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use crate::window::Window;
-
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 #[allow(clippy::cast_sign_loss)]
@@ -22,8 +20,8 @@ trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
 
-pub struct State<'w> {
-    pub window: &'w mut Window,
+pub struct State {
+    glfw_window: *mut GLFWwindow,
     instance: VkInstance,
     phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
@@ -68,17 +66,17 @@ enum ShaderType {
     Fragment,
 }
 
-impl<'w> State<'w> {
-    pub fn new(window: &'w mut Window) -> Self {
+impl State {
+    pub fn new(glfw_window: *mut GLFWwindow) -> Self {
         let instance = create_instance();
-        let surface = create_surface(instance, window);
+        let surface = create_surface(instance, glfw_window);
         let phys_device = get_phys_device(instance, surface);
         let queue_families = get_queue_families(phys_device, surface);
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
         let (swapchain, image_format, extent) =
-            create_swapchain(window, phys_device, device, surface, true);
+            create_swapchain(glfw_window, phys_device, device, surface, true);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
@@ -92,7 +90,7 @@ impl<'w> State<'w> {
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
         Self {
-            window,
+            glfw_window,
             instance,
             phys_device,
             surface,
@@ -205,7 +203,7 @@ impl<'w> State<'w> {
         self.cleanup_swapchain();
 
         let (swapchain, image_format, extent) =
-            create_swapchain(self.window, self.phys_device, self.device, self.surface, false);
+            create_swapchain(self.glfw_window, self.phys_device, self.device, self.surface, false);
         let swapchain_images = get_swapchain_images(self.device, swapchain);
         let image_views = create_image_views(self.device, &swapchain_images, image_format);
         let framebuffers = create_framebuffers(self.device, &image_views, extent, self.render_pass);
@@ -231,7 +229,7 @@ impl<'w> State<'w> {
     }
 }
 
-impl Drop for State<'_> {
+impl Drop for State {
     fn drop(&mut self) {
         unsafe {
             vkDeviceWaitIdle(self.device);
@@ -371,11 +369,11 @@ fn create_instance() -> VkInstance {
     }
 }
 
-fn create_surface(instance: VkInstance, window: &Window) -> VkSurfaceKHR {
+fn create_surface(instance: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
     let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
 
     unsafe {
-        glfwCreateWindowSurface(instance, window.as_inner(), ptr::null(), surface.as_mut_ptr())
+        glfwCreateWindowSurface(instance, glfw_window, ptr::null(), surface.as_mut_ptr())
             .check_err("create window surface");
         surface.assume_init()
     }
@@ -730,7 +728,10 @@ fn choose_swapchain_present_mode(
     VK_PRESENT_MODE_FIFO_KHR
 }
 
-fn choose_swapchain_extent(window: &Window, capabilities: VkSurfaceCapabilitiesKHR) -> VkExtent2D {
+fn choose_swapchain_extent(
+    glfw_window: *mut GLFWwindow,
+    capabilities: VkSurfaceCapabilitiesKHR,
+) -> VkExtent2D {
     if capabilities.currentExtent.width != u32::MAX {
         return capabilities.currentExtent;
     }
@@ -739,7 +740,7 @@ fn choose_swapchain_extent(window: &Window, capabilities: VkSurfaceCapabilitiesK
     let mut fb_height = 0;
 
     unsafe {
-        glfwGetFramebufferSize(window.as_inner(), &mut fb_width, &mut fb_height);
+        glfwGetFramebufferSize(glfw_window, &mut fb_width, &mut fb_height);
     }
 
     let fb_width: u32 = fb_width.try_into().unwrap();
@@ -755,7 +756,7 @@ fn choose_swapchain_extent(window: &Window, capabilities: VkSurfaceCapabilitiesK
 }
 
 fn create_swapchain(
-    window: &Window,
+    glfw_window: *mut GLFWwindow,
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     surface: VkSurfaceKHR,
@@ -764,7 +765,7 @@ fn create_swapchain(
     let swapchain_support = query_swapchain_support(phys_device, surface);
     let surface_format = choose_swapchain_surface_format(&swapchain_support.formats);
     let present_mode = choose_swapchain_present_mode(&swapchain_support.present_modes, verbose);
-    let extent = choose_swapchain_extent(window, swapchain_support.capabilities);
+    let extent = choose_swapchain_extent(glfw_window, swapchain_support.capabilities);
 
     let max_image_count = swapchain_support.capabilities.maxImageCount;
     let mut image_count = swapchain_support.capabilities.minImageCount + 1;
