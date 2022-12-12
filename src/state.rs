@@ -37,7 +37,9 @@ pub struct State {
     framebuffers: Vec<VkFramebuffer>,
     vertex_buffer: VkBuffer,
     vertex_buffer_memory: VkDeviceMemory,
-    vertex_count: u32,
+    index_buffer: VkBuffer,
+    index_buffer_memory: VkDeviceMemory,
+    index_count: u32,
     command_pool: VkCommandPool,
     command_buffers: Vec<VkCommandBuffer>,
     image_available: Vec<VkSemaphore>,
@@ -90,10 +92,27 @@ impl State {
         let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
-        let vertices = [0.0, -0.5, 0.5, 0.5, -0.5, 0.5];
+        let vertices: [f32; 8] = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
 
-        let (vertex_buffer, vertex_buffer_memory) =
-            create_vertex_buffer(phys_device, device, command_pool, gfx_queue, &vertices);
+        let (vertex_buffer, vertex_buffer_memory) = create_buffer_of_type(
+            phys_device,
+            device,
+            command_pool,
+            gfx_queue,
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            &vertices,
+        );
+
+        let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
+
+        let (index_buffer, index_buffer_memory) = create_buffer_of_type(
+            phys_device,
+            device,
+            command_pool,
+            gfx_queue,
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+            &indices,
+        );
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
 
@@ -114,7 +133,9 @@ impl State {
             framebuffers,
             vertex_buffer,
             vertex_buffer_memory,
-            vertex_count: vertices.len().try_into().unwrap(),
+            index_buffer,
+            index_buffer_memory,
+            index_count: indices.len().try_into().unwrap(),
             command_pool,
             command_buffers,
             image_available,
@@ -165,7 +186,8 @@ impl State {
             self.extent,
             self.pipeline,
             self.vertex_buffer,
-            self.vertex_count,
+            self.index_buffer,
+            self.index_count,
         );
 
         let wait_semaphores = [image_available];
@@ -269,6 +291,9 @@ impl Drop for State {
 
             vkDestroyBuffer(self.device, self.vertex_buffer, ptr::null());
             vkFreeMemory(self.device, self.vertex_buffer_memory, ptr::null());
+
+            vkDestroyBuffer(self.device, self.index_buffer, ptr::null());
+            vkFreeMemory(self.device, self.index_buffer_memory, ptr::null());
 
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
@@ -1320,7 +1345,8 @@ fn record_commands_to_buffer(
     extent: VkExtent2D,
     gfx_pipeline: VkPipeline,
     vertex_buffer: VkBuffer,
-    vertex_count: u32,
+    index_buffer: VkBuffer,
+    index_count: u32,
 ) {
     let begin_info = VkCommandBufferBeginInfo {
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -1361,7 +1387,9 @@ fn record_commands_to_buffer(
 
         vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
 
-        vkCmdDraw(cmd_buffer, vertex_count, 1, 0, 0);
+        vkCmdBindIndexBuffer(cmd_buffer, index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+        vkCmdDrawIndexed(cmd_buffer, index_count, 1, 0, 0, 0);
 
         vkCmdEndRenderPass(cmd_buffer);
 
@@ -1500,41 +1528,42 @@ fn find_memory_type(
     None
 }
 
-fn create_vertex_buffer(
+fn create_buffer_of_type<T: Copy>(
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     command_pool: VkCommandPool,
     queue: VkQueue,
-    vertices: &[f32],
+    usage: u32,
+    data: &[T],
 ) -> (VkBuffer, VkDeviceMemory) {
-    let vert_size_bytes: u64 = (vertices.len() * size_of::<f32>()).try_into().unwrap();
+    let size_bytes: u64 = (data.len() * size_of::<T>()).try_into().unwrap();
 
     let (staging_buffer, staging_memory) = create_buffer(
         phys_device,
         device,
-        vert_size_bytes,
+        size_bytes,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
     );
 
-    upload_to_buffer_memory(device, staging_memory, vertices);
+    upload_to_buffer_memory(device, staging_memory, data);
 
-    let (vert_buffer, vert_memory) = create_buffer(
+    let (buffer, memory) = create_buffer(
         phys_device,
         device,
-        vert_size_bytes,
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        size_bytes,
+        usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
     );
 
-    copy_buffers(device, command_pool, queue, staging_buffer, vert_buffer, vert_size_bytes);
+    copy_buffers(device, command_pool, queue, staging_buffer, buffer, size_bytes);
 
     unsafe {
         vkDestroyBuffer(device, staging_buffer, ptr::null());
         vkFreeMemory(device, staging_memory, ptr::null());
     }
 
-    (vert_buffer, vert_memory)
+    (buffer, memory)
 }
 
 fn upload_to_buffer_memory<T: Copy>(device: VkDevice, memory: VkDeviceMemory, data: &[T]) {
