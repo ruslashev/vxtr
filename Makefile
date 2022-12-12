@@ -18,7 +18,7 @@ run: $(BIN)
 	$(BIN)
 
 valgrind: $(BIN)
-	valgrind --leak-check=full --show-leak-kinds=all $(BIN)
+	valgrind --leak-check=full $(BIN)
 
 shaders: $(BUILT_SHADERS)
 
