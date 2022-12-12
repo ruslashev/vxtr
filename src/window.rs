@@ -32,6 +32,7 @@ impl Window {
             glfwInit();
 
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
             glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
 
             let title_cstr = CString::new(title).unwrap();
