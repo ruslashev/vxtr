@@ -1,7 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 
 use state::State;
-use window::Window;
+use window::{Resolution, Window};
 
 use crate::window::{Event, Key};
 
@@ -9,7 +9,7 @@ mod state;
 mod window;
 
 fn main() {
-    let mut window = Window::new(800, 600, "Vulkan tutorial");
+    let mut window = Window::new(Resolution::Windowed(800, 600), "Vulkan tutorial");
     window.set_callbacks();
 
     let mut state = State::new(window.as_inner());

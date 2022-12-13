@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use std::ffi::{c_void, CString};
+use std::ffi::{c_void, CStr, CString};
 use std::ptr;
 
 #[allow(unused)]
@@ -26,18 +26,46 @@ pub enum Key {
     Unknown = GLFW_KEY_UNKNOWN,
 }
 
+#[allow(unused)]
+#[derive(Clone, Copy)]
+pub enum Resolution {
+    Windowed(i32, i32),
+    Fullscreen,
+    FullscreenWithRes(i32, i32),
+}
+
 impl Window {
-    pub fn new<T: Into<Vec<u8>>>(width: i32, height: i32, title: T) -> Self {
-        let window = unsafe {
+    pub fn new<T: Into<Vec<u8>>>(resolution: Resolution, title: T) -> Self {
+        let title_cstr = CString::new(title).unwrap();
+
+        let (width, height, monitor) = unsafe {
             glfwInit();
 
+            match resolution {
+                Resolution::Windowed(width, height) => {
+                    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+                    glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+
+                    (width, height, ptr::null_mut())
+                }
+                Resolution::Fullscreen => {
+                    let monitor = get_monitor();
+                    let vidmode = get_video_mode(monitor);
+
+                    (vidmode.width, vidmode.height, monitor)
+                }
+                Resolution::FullscreenWithRes(width, height) => {
+                    let monitor = get_monitor();
+
+                    (width, height, monitor)
+                }
+            }
+        };
+
+        let window = unsafe {
             glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-            glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
-            glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
 
-            let title_cstr = CString::new(title).unwrap();
-
-            glfwCreateWindow(width, height, title_cstr.as_ptr(), ptr::null_mut(), ptr::null_mut())
+            glfwCreateWindow(width, height, title_cstr.as_ptr(), monitor, ptr::null_mut())
         };
 
         Window {
@@ -137,5 +165,43 @@ fn push_event_to_window(glfw_window: *mut GLFWwindow, event: Event) {
         } else {
             println!("push_event_to_window: null window ptr, event = {:?}", event);
         }
+    }
+}
+
+fn get_monitor() -> *mut GLFWmonitor {
+    let monitor = unsafe { glfwGetPrimaryMonitor() };
+
+    if monitor.is_null() {
+        glfw_panic("get primary monitor");
+    }
+
+    monitor
+}
+
+fn get_video_mode(monitor: *mut GLFWmonitor) -> GLFWvidmode {
+    let vidmode_ptr = unsafe { glfwGetVideoMode(monitor) };
+
+    if vidmode_ptr.is_null() {
+        glfw_panic("get video mode for monitor");
+    }
+
+    unsafe { vidmode_ptr.read() }
+}
+
+fn glfw_panic(action: &'static str) -> ! {
+    let (code, string) = get_glfw_error();
+
+    panic!("Failed to {}: code = {} error = \"{}\"", action, code, string);
+}
+
+fn get_glfw_error() -> (i32, String) {
+    let mut err_ptr = ptr::null();
+
+    unsafe {
+        let code = glfwGetError(&mut err_ptr);
+        let cstr = CStr::from_ptr(err_ptr);
+        let string = cstr.to_str().expect("failed to convert GLFW error string").to_string();
+
+        (code, string)
     }
 }
