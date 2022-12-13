@@ -1,12 +1,12 @@
 BIN_NAME = vulkan_tutorial
 BUILD_MODE = debug
+BUILD_DIR = build
 
 SHADERS = $(wildcard shaders/*.vert) $(wildcard shaders/*.frag)
 TARGET_DIR = $(realpath target/$(BUILD_MODE))
 BIN = $(TARGET_DIR)/$(BIN_NAME)
 DEP = $(BIN).d
-
-BUILT_SHADERS = $(SHADERS:%=%.spv)
+BUILT_SHADERS = $(SHADERS:shaders/%=$(BUILD_DIR)/%.spv)
 
 ifeq "$(BUILD_MODE)" "release"
     CARGO_FLAGS = --release
@@ -22,13 +22,18 @@ valgrind: $(BIN)
 
 shaders: $(BUILT_SHADERS)
 
-build: $(BIN)
+all: $(BIN)
 
 $(BIN): $(BUILT_SHADERS)
 	cargo build $(CARGO_FLAGS)
 
-shaders/%.spv: shaders/%
+$(BUILT_SHADERS): | $(BUILD_DIR)
+
+$(BUILD_DIR)/%.spv: shaders/%
 	glslc $^ -o $@
+
+$(BUILD_DIR):
+	mkdir -p $@
 
 clippy:
 	cargo clippy $(CARGO_FLAGS) -- -W clippy::all
@@ -41,7 +46,7 @@ fmt:
 
 clean:
 	cargo clean
-	rm -f $(BUILT_SHADERS)
+	rm -rf $(BUILD_DIR)
 
 -include $(DEP)
-.PHONY: run valgrind shaders build clippy_all clippy_pedantic fmt clean
+.PHONY: run valgrind shaders all clippy_all clippy_pedantic fmt clean

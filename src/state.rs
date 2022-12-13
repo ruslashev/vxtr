@@ -1071,8 +1071,8 @@ fn create_graphics_pipeline(
     render_pass: VkRenderPass,
     pipeline_layout: VkPipelineLayout,
 ) -> VkPipeline {
-    let vert_compiled = include_bytes!("../shaders/shader.vert.spv");
-    let frag_compiled = include_bytes!("../shaders/shader.frag.spv");
+    let vert_compiled = include_bytes!("../build/shader.vert.spv");
+    let frag_compiled = include_bytes!("../build/shader.frag.spv");
 
     let vert_shader_mod = create_shader_module(device, vert_compiled);
     let frag_shader_mod = create_shader_module(device, frag_compiled);
