@@ -2,13 +2,19 @@
 
 #version 450
 
+layout(push_constant) uniform PushConstants {
+    float time;
+    float res_x;
+    float res_y;
+} constants;
+
 layout(location = 0) out vec4 out_color;
 
 void main()
 {
-    float time = 0.0;
+    float time = constants.time;
     vec2 frag_coord = gl_FragCoord.xy;
-    vec2 resolution = vec2(800.0, 600.0);
+    vec2 resolution = vec2(constants.res_x, constants.res_y);
 
     vec2 uv = (frag_coord.xy / resolution.xx-0.5)*8.0;
     vec2 uv0=uv;

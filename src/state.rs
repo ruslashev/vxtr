@@ -72,6 +72,13 @@ enum ShaderType {
     Fragment,
 }
 
+#[allow(unused)] // False positive
+struct PushConstants {
+    time: f32,
+    res_x: f32,
+    res_y: f32,
+}
+
 impl State {
     pub fn new(glfw_window: *mut GLFWwindow) -> Self {
         let instance = create_instance();
@@ -86,7 +93,8 @@ impl State {
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
-        let pipeline_layout = create_pipeline_layout(device);
+        let push_constant_range = get_push_constant_range();
+        let pipeline_layout = create_pipeline_layout(device, push_constant_range);
         let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
@@ -253,6 +261,18 @@ impl State {
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0];
 
+        // Truncates after ~97 days
+        #[allow(clippy::cast_possible_truncation)]
+        let time_trunc = self.current_time as f32;
+
+        let push_constants = PushConstants {
+            time: time_trunc,
+            res_x: u32_to_f32_nowarn(self.extent.width),
+            res_y: u32_to_f32_nowarn(self.extent.height),
+        };
+        let push_constants_ptr = ptr::addr_of!(push_constants).cast::<c_void>();
+        let push_constants_size = size_of::<PushConstants>().try_into().unwrap();
+
         unsafe {
             vkResetCommandBuffer(cmd_buffer, 0);
 
@@ -266,6 +286,15 @@ impl State {
             vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
 
             vkCmdBindIndexBuffer(cmd_buffer, self.index_buffer, 0, VK_INDEX_TYPE_UINT16);
+
+            vkCmdPushConstants(
+                cmd_buffer,
+                self.pipeline_layout,
+                VK_SHADER_STAGE_FRAGMENT_BIT,
+                0,
+                push_constants_size,
+                push_constants_ptr,
+            );
 
             vkCmdDrawIndexed(cmd_buffer, self.index_count, 1, 0, 0, 0);
 
@@ -1294,9 +1323,22 @@ fn create_blending_info(
     }
 }
 
-fn create_pipeline_layout(device: VkDevice) -> VkPipelineLayout {
+fn get_push_constant_range() -> VkPushConstantRange {
+    VkPushConstantRange {
+        stageFlags: VK_SHADER_STAGE_FRAGMENT_BIT,
+        offset: 0,
+        size: size_of::<PushConstants>().try_into().unwrap(),
+    }
+}
+
+fn create_pipeline_layout(
+    device: VkDevice,
+    push_constant_range: VkPushConstantRange,
+) -> VkPipelineLayout {
     let create_info = VkPipelineLayoutCreateInfo {
         sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+        pushConstantRangeCount: 1,
+        pPushConstantRanges: &push_constant_range,
         ..Default::default()
     };
 
