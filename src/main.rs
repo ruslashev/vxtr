@@ -14,11 +14,22 @@ fn main() {
 
     let mut state = State::new(window.as_inner());
 
+    let updates_per_second: i16 = 60;
+    let dt = 1.0 / f64::from(updates_per_second);
+
+    let mut current_time = Window::current_time();
     let mut minimized = false;
 
     'main_loop: while window.running {
         if minimized {
             Window::block_until_event();
+        }
+
+        let real_time = Window::current_time();
+
+        while current_time < real_time {
+            current_time += dt;
+            state.update(dt, current_time);
         }
 
         for event in window.poll_events() {

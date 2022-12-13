@@ -80,6 +80,10 @@ impl Window {
             glfwWaitEvents();
         }
     }
+
+    pub fn current_time() -> f64 {
+        unsafe { glfwGetTime() }
+    }
 }
 
 impl Drop for Window {

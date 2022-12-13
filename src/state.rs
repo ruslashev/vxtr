@@ -46,6 +46,7 @@ pub struct State {
     render_finished: Vec<VkSemaphore>,
     is_rendering: Vec<VkFence>,
     current_frame: usize,
+    current_time: f64,
 }
 
 #[derive(Default)]
@@ -142,6 +143,7 @@ impl State {
             render_finished,
             is_rendering,
             current_frame: 0,
+            current_time: 0.0,
         }
     }
 
@@ -308,6 +310,10 @@ impl State {
 
     pub fn handle_resize(&mut self, _width: i32, _height: i32) {
         self.recreate_swapchain();
+    }
+
+    pub fn update(&mut self, _dt: f64, t: f64) {
+        self.current_time = t;
     }
 }
 
