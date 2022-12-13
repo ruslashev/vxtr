@@ -92,7 +92,7 @@ impl State {
         let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
-        let vertices: [f32; 8] = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
+        let vertices: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
 
         let (vertex_buffer, vertex_buffer_memory) = create_buffer_of_type(
             phys_device,
