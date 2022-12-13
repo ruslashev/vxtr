@@ -27,7 +27,7 @@ build: $(BIN)
 $(BIN): $(BUILT_SHADERS)
 	cargo build $(CARGO_FLAGS)
 
-%.spv: %
+shaders/%.spv: shaders/%
 	glslc $^ -o $@
 
 clippy:
