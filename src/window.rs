@@ -109,8 +109,17 @@ impl Window {
         }
     }
 
+    /// Returns number of seconds since the library was initialized with `glfwInit()`
     pub fn current_time() -> f64 {
         unsafe { glfwGetTime() }
+    }
+
+    pub fn set_title(&mut self, title: String) {
+        let cstr = CString::new(title).unwrap();
+
+        unsafe {
+            glfwSetWindowTitle(self.window, cstr.as_ptr());
+        }
     }
 }
 
