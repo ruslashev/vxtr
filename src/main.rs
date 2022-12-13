@@ -9,7 +9,7 @@ mod state;
 mod window;
 
 fn main() {
-    let mut window = Window::new(Resolution::Windowed(800, 600), "Vulkan tutorial");
+    let mut window = Window::new(Resolution::Windowed(800, 600), "vxtr");
     window.set_callbacks();
 
     let mut state = State::new(window.as_inner());
@@ -67,7 +67,7 @@ fn main() {
             let draw_ms = draw_time * 1000.0;
             let fps = 1.0 / frame_time;
 
-            let title = format!("Vulkan tutorial | Draw = {:05.2} ms, FPS = {:04.0}", draw_ms, fps);
+            let title = format!("vxtr | draw = {:05.2} ms, FPS = {:04.0}", draw_ms, fps);
 
             window.set_title(title);
         }

@@ -453,7 +453,7 @@ fn get_vk_api_version(version: u32) -> (u32, u32, u32, u32) {
 fn create_instance() -> VkInstance {
     let app_info = VkApplicationInfo {
         sType: VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        pApplicationName: c_str!("lole"),
+        pApplicationName: c_str!("vxtr"),
         applicationVersion: make_vk_version(1, 0, 0),
         pEngineName: c_str!("jej"),
         engineVersion: make_vk_version(1, 0, 0),

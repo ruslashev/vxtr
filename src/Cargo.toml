@@ -1,10 +1,10 @@
 [package]
-name = "vulkan_tutorial"
+name = "vxtr"
 version = "0.0.0"
 edition = "2021"
 
 [[bin]]
-name = "vulkan_tutorial"
+name = "vxtr"
 path = "main.rs"
 
 [dependencies]

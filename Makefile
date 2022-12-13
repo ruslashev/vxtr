@@ -1,4 +1,4 @@
-BIN_NAME = vulkan_tutorial
+BIN_NAME = vxtr
 BUILD_MODE = debug
 BUILD_DIR = build
 
