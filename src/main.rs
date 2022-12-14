@@ -25,7 +25,7 @@ fn main() {
     let mut current_time = Window::current_time();
     let mut minimized = false;
 
-    let title_update_delay = 0.1;
+    let title_update_delay = 0.03;
     let mut next_title_update_time = 0.0;
 
     'main_loop: while window.running {
