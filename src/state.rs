@@ -42,9 +42,9 @@ pub struct State {
     index_count: u32,
     command_pool: VkCommandPool,
     command_buffers: Vec<VkCommandBuffer>,
-    image_available: Vec<VkSemaphore>,
-    render_finished: Vec<VkSemaphore>,
-    is_rendering: Vec<VkFence>,
+    image_available: [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
+    render_finished: [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
+    is_rendering: [VkFence; MAX_FRAMES_IN_FLIGHT],
     current_frame: usize,
     current_time: f64,
 }
@@ -1429,15 +1429,21 @@ fn create_command_buffers(
     command_buffers
 }
 
-fn create_sync_objects(device: VkDevice) -> (Vec<VkSemaphore>, Vec<VkSemaphore>, Vec<VkFence>) {
-    let mut image_available = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-    let mut render_finished = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-    let mut is_rendering = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+fn create_sync_objects(
+    device: VkDevice,
+) -> (
+    [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
+    [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
+    [VkFence; MAX_FRAMES_IN_FLIGHT],
+) {
+    let mut image_available = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
+    let mut render_finished = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
+    let mut is_rendering = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
 
-    for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        image_available.push(create_semaphore(device));
-        render_finished.push(create_semaphore(device));
-        is_rendering.push(create_fence(device));
+    for i in 0..MAX_FRAMES_IN_FLIGHT {
+        image_available[i] = create_semaphore(device);
+        render_finished[i] = create_semaphore(device);
+        is_rendering[i] = create_fence(device);
     }
 
     (image_available, render_finished, is_rendering)
