@@ -4,11 +4,12 @@ BUILD_DIR = build
 
 GLSLC_FLAGS = -O
 
-SHADERS = $(wildcard shaders/*.vert) $(wildcard shaders/*.frag)
+SHADERS = $(wildcard shaders/shader.*)
 TARGET_DIR = $(realpath target/$(BUILD_MODE))
 BIN = $(TARGET_DIR)/$(BIN_NAME)
 DEP = $(BIN).d
 BUILT_SHADERS = $(SHADERS:shaders/%=$(BUILD_DIR)/%.spv)
+PWD = $(shell pwd)
 
 ifeq "$(BUILD_MODE)" "release"
     CARGO_FLAGS = --release
@@ -31,7 +32,8 @@ $(BIN): $(BUILT_SHADERS)
 
 $(BUILT_SHADERS): | $(BUILD_DIR)
 
-$(BUILD_DIR)/%.spv: shaders/%
+# Alternative path is for Rust's depfiles
+$(BUILD_DIR)/%.spv $(PWD)/src/../$(BUILD_DIR)/%: shaders/%
 	glslc $(GLSLC_FLAGS) $^ -o $@
 
 $(BUILD_DIR):
