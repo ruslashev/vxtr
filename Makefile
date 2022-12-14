@@ -2,6 +2,8 @@ BIN_NAME = vxtr
 BUILD_MODE = debug
 BUILD_DIR = build
 
+GLSLC_FLAGS = -O
+
 SHADERS = $(wildcard shaders/*.vert) $(wildcard shaders/*.frag)
 TARGET_DIR = $(realpath target/$(BUILD_MODE))
 BIN = $(TARGET_DIR)/$(BIN_NAME)
@@ -30,7 +32,7 @@ $(BIN): $(BUILT_SHADERS)
 $(BUILT_SHADERS): | $(BUILD_DIR)
 
 $(BUILD_DIR)/%.spv: shaders/%
-	glslc $^ -o $@
+	glslc $(GLSLC_FLAGS) $^ -o $@
 
 $(BUILD_DIR):
 	mkdir -p $@
