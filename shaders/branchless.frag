@@ -8,8 +8,8 @@ layout(push_constant) uniform PushConstants {
 
 layout(location = 0) out vec4 out_color;
 
-const bool USE_BRANCHLESS_DDA = true;
-const int MAX_RAY_STEPS = 64;
+const int MAX_RAY_STEPS = 512;
+const float SCALE = 5.0;
 
 float sdSphere(vec3 p, float d)
 {
@@ -25,7 +25,10 @@ float sdBox(vec3 p, vec3 b)
 bool getVoxel(vec3 p)
 {
     p = p + vec3(0.5);
-    float d = min(max(-sdSphere(p, 7.5), sdBox(p, vec3(6.0))), -sdSphere(p, 25.0));
+    float s1 = sdSphere(p, 7.5 * SCALE);
+    float b = sdBox(p, vec3(6.0 * SCALE));
+    float s2 = sdSphere(p, 25.0 * SCALE);
+    float d = min(max(b, -s1), -s2);
     return d < 0.0;
 }
 
@@ -39,8 +42,6 @@ vec2 rotate2d(vec2 v, float a)
 void main()
 {
     float time = constants.time;
-    // For shadertoy:
-    // vec2 frag_coord = vec2(gl_FragCoord.x, constants.res_y - gl_FragCoord.y);
     vec2 frag_coord = gl_FragCoord.xy;
     vec2 resolution = vec2(constants.res_x, constants.res_y);
 
@@ -49,7 +50,7 @@ void main()
     vec3 cameraPlaneU = vec3(1.0, 0.0, 0.0);
     vec3 cameraPlaneV = vec3(0.0, 1.0, 0.0) * resolution.y / resolution.x;
     vec3 rayDir = cameraDir + screenPos.x * cameraPlaneU + screenPos.y * cameraPlaneV;
-    vec3 rayPos = vec3(0.0, 2.0 * sin(time * 2.7), -12.0);
+    vec3 rayPos = vec3(0.0, 2.0 * SCALE * sin(time * 2.7), -15.0 * SCALE);
 
     rayPos.xz = rotate2d(rayPos.xz, time);
     rayDir.xz = rotate2d(rayDir.xz, time);
@@ -71,7 +72,6 @@ void main()
 
         // All components of mask are false except for the corresponding largest component
         // of sideDist, which is the axis along which the ray should be incremented.
-
         mask = lessThanEqual(sideDist.xyz, min(sideDist.yzx, sideDist.zxy));
 
         maskv = vec3(mask);
@@ -82,13 +82,13 @@ void main()
 
     vec3 color;
     if (mask.x) {
-        color = vec3(0.5);
+        color = vec3(0.33);
     }
     if (mask.y) {
         color = vec3(1.0);
     }
     if (mask.z) {
-        color = vec3(0.75);
+        color = vec3(0.66);
     }
     out_color.rgb = color;
 }
