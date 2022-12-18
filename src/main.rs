@@ -1,4 +1,4 @@
-#![allow(clippy::wildcard_imports)]
+#![allow(clippy::wildcard_imports, clippy::uninlined_format_args)]
 
 use state::State;
 use window::{Resolution, Window};
