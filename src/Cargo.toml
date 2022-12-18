@@ -8,4 +8,4 @@ name = "vxtr"
 path = "main.rs"
 
 [dependencies]
-glfw_sys = { path = "../lib/glfw_sys" }
+glfw_sys = { path = "../glfw_sys" }
