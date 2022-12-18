@@ -4,7 +4,7 @@ BUILD_DIR = build
 
 GLSLC_FLAGS = -O
 
-SHADERS = $(wildcard shaders/shader.*)
+SHADERS = $(wildcard shaders/*.*)
 TARGET_DIR = $(realpath target/$(BUILD_MODE))
 BIN = $(TARGET_DIR)/$(BIN_NAME)
 DEP = $(BIN).d
