@@ -1,5 +1,9 @@
 [workspace]
-members = ["glfw_sys", "src"]
+members = [
+    "glfw_sys",
+    "src",
+    "vk",
+]
 
 [profile.dev]
 opt-level = 1
