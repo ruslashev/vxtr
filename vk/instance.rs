@@ -1,6 +1,7 @@
 use glfw_sys::*;
 
-use crate::{convert_to_c_ptrs, CheckVkError, Instance};
+use super::Instance;
+use crate::utils::{convert_to_c_ptrs, CheckVkError};
 
 use std::ffi::{c_char, CStr, CString};
 use std::mem::MaybeUninit;
