@@ -9,20 +9,13 @@ const MAX_FRAMES_IN_FLIGHT: usize = 2;
 #[allow(clippy::cast_sign_loss)]
 const SUBPASS_EXTERNAL: u32 = VK_SUBPASS_EXTERNAL as u32;
 
-macro_rules! c_str {
-    ($lit:literal) => {{
-        let padded = concat!($lit, "\0").as_bytes();
-        CStr::from_bytes_with_nul(padded).unwrap().as_ptr()
-    }};
-}
-
 trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
 
 pub struct State {
     glfw_window: *mut GLFWwindow,
-    instance: VkInstance,
+    instance: vk::Instance,
     phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
     device: VkDevice,
@@ -81,9 +74,9 @@ struct PushConstants {
 
 impl State {
     pub fn new(glfw_window: *mut GLFWwindow) -> Self {
-        let instance = create_instance();
-        let surface = create_surface(instance, glfw_window);
-        let phys_device = get_phys_device(instance, surface);
+        let instance = vk::Instance::create("vxtr", (1, 0, 0));
+        let surface = create_surface(instance.as_raw(), glfw_window);
+        let phys_device = get_phys_device(instance.as_raw(), surface);
         let queue_families = get_queue_families(phys_device, surface);
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
@@ -378,8 +371,7 @@ impl Drop for State {
             vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
 
             vkDestroyDevice(self.device, ptr::null());
-            vkDestroySurfaceKHR(self.instance, self.surface, ptr::null());
-            vkDestroyInstance(self.instance, ptr::null());
+            vkDestroySurfaceKHR(self.instance.as_raw(), self.surface, ptr::null());
         }
     }
 }
@@ -433,14 +425,6 @@ fn convert_to_c_ptrs(cstrings: &[CString]) -> Vec<*const c_char> {
     cstrings.iter().map(|cstring| cstring.as_c_str().as_ptr()).collect()
 }
 
-fn make_vk_version(major: u32, minor: u32, patch: u32) -> u32 {
-    (major << 22) | (minor << 12) | patch
-}
-
-fn make_vk_api_version(variant: u32, major: u32, minor: u32, patch: u32) -> u32 {
-    (variant << 29) | (major << 22) | (minor << 12) | patch
-}
-
 fn get_vk_api_version(version: u32) -> (u32, u32, u32, u32) {
     let variant = version >> 29;
     let major = (version >> 22) & 0x7f;
@@ -448,48 +432,6 @@ fn get_vk_api_version(version: u32) -> (u32, u32, u32, u32) {
     let patch = version & 0xfff;
 
     (variant, major, minor, patch)
-}
-
-fn create_instance() -> VkInstance {
-    let app_info = VkApplicationInfo {
-        sType: VK_STRUCTURE_TYPE_APPLICATION_INFO,
-        pApplicationName: c_str!("vxtr"),
-        applicationVersion: make_vk_version(1, 0, 0),
-        pEngineName: c_str!("jej"),
-        engineVersion: make_vk_version(1, 0, 0),
-        apiVersion: make_vk_api_version(0, 1, 0, 0),
-        pNext: ptr::null(),
-    };
-
-    let mut extension_count = 0;
-    let extension_names = unsafe { glfwGetRequiredInstanceExtensions(&mut extension_count) };
-
-    print_extensions(extension_count, extension_names);
-
-    let mut create_info = VkInstanceCreateInfo {
-        sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-        pApplicationInfo: &app_info,
-        enabledExtensionCount: extension_count,
-        ppEnabledExtensionNames: extension_names,
-        ..Default::default()
-    };
-
-    let layers = get_validation_layers(true);
-    let c_ptrs = convert_to_c_ptrs(&layers);
-
-    if cfg!(debug_assertions) {
-        create_info.enabledLayerCount = c_ptrs.len().try_into().unwrap();
-        create_info.ppEnabledLayerNames = c_ptrs.as_ptr();
-    }
-
-    let mut instance = MaybeUninit::<VkInstance>::uninit();
-
-    unsafe {
-        vkCreateInstance(&create_info, ptr::null(), instance.as_mut_ptr())
-            .check_err("create instance");
-
-        instance.assume_init()
-    }
 }
 
 fn create_surface(instance: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
@@ -1727,19 +1669,6 @@ fn print_device_features(f: &VkPhysicalDeviceFeatures) {
     let indented = features.lines().map(|line| "\t".to_owned() + line + "\n").collect::<String>();
 
     print!("{}", indented);
-}
-
-fn print_extensions(count: u32, names: *mut *const c_char) {
-    println!("Extensions:");
-
-    for i in 0..count {
-        let cstr = unsafe {
-            let ptr = names.add(i as usize).read();
-            CStr::from_ptr(ptr)
-        };
-
-        println!("\t{:?}", cstr);
-    }
 }
 
 fn print_validation_layers(layers: &[VkLayerProperties]) {

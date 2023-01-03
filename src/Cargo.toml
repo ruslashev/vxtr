@@ -9,3 +9,4 @@ path = "main.rs"
 
 [dependencies]
 glfw_sys = { path = "../glfw_sys" }
+vk = { path = "../vk" }
