@@ -14,7 +14,7 @@ impl Instance {
     /// # Panics
     ///
     /// Panics if `app_name` contains null byte in the middle.
-    pub fn create<S>(app_name: S, app_version: (u32, u32, u32)) -> Self
+    pub fn new<S>(app_name: S, app_version: (u32, u32, u32), glfw_window: *mut GLFWwindow) -> Self
     where
         S: Into<Vec<u8>>,
     {
@@ -69,17 +69,34 @@ impl Instance {
             instance.assume_init()
         };
 
-        Self { raw }
+        let surface = Self::create_surface(raw, glfw_window);
+
+        Self { raw, surface }
     }
 
     pub fn as_raw(&self) -> VkInstance {
         self.raw
+    }
+
+    pub fn surface(&self) -> VkSurfaceKHR {
+        self.surface
+    }
+
+    fn create_surface(raw: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
+        let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
+
+        unsafe {
+            glfwCreateWindowSurface(raw, glfw_window, ptr::null(), surface.as_mut_ptr())
+                .check_err("create window surface");
+            surface.assume_init()
+        }
     }
 }
 
 impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
+            vkDestroySurfaceKHR(self.raw, self.surface, ptr::null());
             vkDestroyInstance(self.raw, ptr::null());
         }
     }

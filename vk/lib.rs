@@ -12,4 +12,5 @@ mod utils;
 
 pub struct Instance {
     raw: VkInstance,
+    surface: VkSurfaceKHR,
 }

@@ -17,7 +17,6 @@ pub struct State {
     glfw_window: *mut GLFWwindow,
     instance: vk::Instance,
     phys_device: VkPhysicalDevice,
-    surface: VkSurfaceKHR,
     device: VkDevice,
     gfx_queue: VkQueue,
     present_queue: VkQueue,
@@ -74,15 +73,14 @@ struct PushConstants {
 
 impl State {
     pub fn new(glfw_window: *mut GLFWwindow) -> Self {
-        let instance = vk::Instance::create("vxtr", (1, 0, 0));
-        let surface = create_surface(instance.as_raw(), glfw_window);
-        let phys_device = get_phys_device(instance.as_raw(), surface);
-        let queue_families = get_queue_families(phys_device, surface);
+        let instance = vk::Instance::new("vxtr", (1, 0, 0), glfw_window);
+        let phys_device = get_phys_device(instance.as_raw(), instance.surface());
+        let queue_families = get_queue_families(phys_device, instance.surface());
         let device = create_logical_device(phys_device, &queue_families);
         let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
         let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
         let (swapchain, image_format, extent) =
-            create_swapchain(glfw_window, phys_device, device, surface, true);
+            create_swapchain(glfw_window, phys_device, device, instance.surface(), true);
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
@@ -122,7 +120,6 @@ impl State {
             glfw_window,
             instance,
             phys_device,
-            surface,
             device,
             gfx_queue,
             present_queue,
@@ -304,8 +301,13 @@ impl State {
 
         self.cleanup_swapchain();
 
-        let (swapchain, image_format, extent) =
-            create_swapchain(self.glfw_window, self.phys_device, self.device, self.surface, false);
+        let (swapchain, image_format, extent) = create_swapchain(
+            self.glfw_window,
+            self.phys_device,
+            self.device,
+            self.instance.surface(),
+            false,
+        );
         let swapchain_images = get_swapchain_images(self.device, swapchain);
         let image_views = create_image_views(self.device, &swapchain_images, image_format);
         let framebuffers = create_framebuffers(self.device, &image_views, extent, self.render_pass);
@@ -371,7 +373,6 @@ impl Drop for State {
             vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
 
             vkDestroyDevice(self.device, ptr::null());
-            vkDestroySurfaceKHR(self.instance.as_raw(), self.surface, ptr::null());
         }
     }
 }
@@ -432,16 +433,6 @@ fn get_vk_api_version(version: u32) -> (u32, u32, u32, u32) {
     let patch = version & 0xfff;
 
     (variant, major, minor, patch)
-}
-
-fn create_surface(instance: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
-    let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
-
-    unsafe {
-        glfwCreateWindowSurface(instance, glfw_window, ptr::null(), surface.as_mut_ptr())
-            .check_err("create window surface");
-        surface.assume_init()
-    }
 }
 
 fn get_phys_device(instance: VkInstance, surface: VkSurfaceKHR) -> VkPhysicalDevice {
