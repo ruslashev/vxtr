@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use std::ffi::{c_void, CString};
+use std::ffi::c_void;
 use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
@@ -86,7 +86,6 @@ impl State {
         Self {
             glfw_window,
             instance,
-            phys_device,
             device,
             gfx_queue,
             present_queue,
@@ -336,7 +335,6 @@ impl Drop for State {
             vkFreeMemory(self.device, self.index_buffer_memory, ptr::null());
 
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
-            vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
         }
     }
 }

@@ -9,6 +9,7 @@ use glfw_sys::*;
 
 mod device;
 mod instance;
+mod pipeline;
 mod render_pass;
 mod shader;
 mod swapchain;
@@ -42,6 +43,11 @@ pub struct RenderPass {
 pub struct Shader {
     module: VkShaderModule,
     stage_info: VkPipelineShaderStageCreateInfo,
+    device: VkDevice,
+}
+
+pub struct PipelineLayout {
+    raw: VkPipelineLayout,
     device: VkDevice,
 }
 

@@ -2,8 +2,8 @@ use glfw_sys::*;
 
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
 use crate::{
-    Device, Instance, QueueFamilies, QueueFamily, RenderPass, Shader, ShaderType, Swapchain,
-    SwapchainSupport,
+    Device, Instance, PipelineLayout, QueueFamilies, QueueFamily, RenderPass, Shader, ShaderType,
+    Swapchain, SwapchainSupport,
 };
 
 use std::ffi::{CStr, CString};
@@ -88,32 +88,12 @@ impl Device {
         image_views
     }
 
-    pub fn create_render_pass(&self, image_format: VkFormat) -> VkRenderPass {
+    pub fn create_render_pass(&self, image_format: VkFormat) -> RenderPass {
         RenderPass::new(self, image_format)
     }
 
-    pub fn create_pipeline_layout<PushConstT>(&self, push_const_stages: u32) -> VkPipelineLayout {
-        let push_constant_range = VkPushConstantRange {
-            stageFlags: push_const_stages,
-            offset: 0,
-            size: size_of::<PushConstT>().try_into().unwrap(),
-        };
-
-        let create_info = VkPipelineLayoutCreateInfo {
-            sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-            pushConstantRangeCount: 1,
-            pPushConstantRanges: &push_constant_range,
-            ..Default::default()
-        };
-
-        unsafe {
-            let mut layout = MaybeUninit::<VkPipelineLayout>::uninit();
-
-            vkCreatePipelineLayout(self.device, &create_info, ptr::null_mut(), layout.as_mut_ptr())
-                .check_err("create pipeline layout");
-
-            layout.assume_init()
-        }
+    pub fn create_pipeline_layout<PushConstT>(&self, push_const_stages: u32) -> PipelineLayout {
+        PipelineLayout::new::<PushConstT>(self, push_const_stages)
     }
 
     pub fn create_shader(&self, compiled: &[u8], sh_type: ShaderType) -> Shader {
