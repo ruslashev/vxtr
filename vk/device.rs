@@ -22,6 +22,10 @@ impl Device {
         }
     }
 
+    pub fn as_raw(&self) -> VkDevice {
+        self.device
+    }
+
     pub fn get_queue(&self, queue_family: QueueFamily) -> Option<VkQueue> {
         let family_idx = match queue_family {
             QueueFamily::Graphics => self.queue_families.graphics?,

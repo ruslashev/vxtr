@@ -53,7 +53,7 @@ impl<'d> Swapchain<'d> {
         let raw = unsafe {
             let mut swapchain = MaybeUninit::<VkSwapchainKHR>::uninit();
 
-            vkCreateSwapchainKHR(device.device, &create_info, ptr::null(), swapchain.as_mut_ptr())
+            vkCreateSwapchainKHR(device.as_raw(), &create_info, ptr::null(), swapchain.as_mut_ptr())
                 .check_err("create swapchain");
 
             swapchain.assume_init()
@@ -66,12 +66,26 @@ impl<'d> Swapchain<'d> {
             device,
         }
     }
+
+    pub fn get_images(&self) -> Vec<VkImage> {
+        unsafe {
+            let mut count = 0;
+            vkGetSwapchainImagesKHR(self.device.as_raw(), self.raw, &mut count, ptr::null_mut());
+
+            let mut images = Vec::with_capacity(count as usize);
+            images.resize(count as usize, ptr::null_mut());
+
+            vkGetSwapchainImagesKHR(self.device.as_raw(), self.raw, &mut count, images.as_mut_ptr());
+
+            images
+        }
+    }
 }
 
 impl Drop for Swapchain<'_> {
     fn drop(&mut self) {
         unsafe {
-            vkDestroySwapchainKHR(self.device.device, self.raw, ptr::null());
+            vkDestroySwapchainKHR(self.device.as_raw(), self.raw, ptr::null());
         }
     }
 }

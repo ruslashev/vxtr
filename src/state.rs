@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{c_void, CString};
 use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
@@ -60,8 +60,7 @@ impl State<'_> {
         let gfx_queue = device.get_queue(vk::QueueFamily::Graphics).unwrap();
         let present_queue = device.get_queue(vk::QueueFamily::Present).unwrap();
         let swapchain = device.create_swapchain(&instance, true);
-
-        let swapchain_images = get_swapchain_images(device, swapchain);
+        let swapchain_images = swapchain.get_images();
         let image_views = create_image_views(device, &swapchain_images, image_format);
         let render_pass = create_render_pass(device, image_format);
         let push_constant_range = get_push_constant_range();
@@ -356,20 +355,6 @@ impl Drop for State {
 impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
-    }
-}
-
-fn get_swapchain_images(device: VkDevice, swapchain: VkSwapchainKHR) -> Vec<VkImage> {
-    unsafe {
-        let mut count = 0;
-        vkGetSwapchainImagesKHR(device, swapchain, &mut count, ptr::null_mut());
-
-        let mut images = Vec::with_capacity(count as usize);
-        images.resize(count as usize, ptr::null_mut());
-
-        vkGetSwapchainImagesKHR(device, swapchain, &mut count, images.as_mut_ptr());
-
-        images
     }
 }
 
