@@ -19,4 +19,24 @@ pub struct Instance {
 pub struct Device {
     phys_device: VkPhysicalDevice,
     device: VkDevice,
+    queue_families: QueueFamilies,
+}
+
+pub enum QueueFamily {
+    Graphics,
+    Compute,
+    Transfer,
+    SparseBinding,
+    Protected,
+    Present,
+}
+
+#[derive(Default)]
+struct QueueFamilies {
+    graphics: Option<u32>,
+    compute: Option<u32>,
+    transfer: Option<u32>,
+    sparse_binding: Option<u32>,
+    protected: Option<u32>,
+    present: Option<u32>,
 }

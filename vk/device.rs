@@ -1,21 +1,11 @@
 use glfw_sys::*;
 
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
-use crate::{Device, Instance};
+use crate::{Device, Instance, QueueFamilies, QueueFamily};
 
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
-
-#[derive(Default)]
-struct QueueFamilies {
-    graphics: Option<u32>,
-    compute: Option<u32>,
-    transfer: Option<u32>,
-    sparse_binding: Option<u32>,
-    protected: Option<u32>,
-    present: Option<u32>,
-}
 
 #[derive(Default)]
 struct SwapchainSupportDetails {
@@ -35,6 +25,29 @@ impl Device {
         Self {
             phys_device,
             device,
+            queue_families,
+        }
+    }
+
+    pub fn get_queue(&self, queue_family: QueueFamily) -> Option<VkQueue> {
+        let family_idx = match queue_family {
+            QueueFamily::Graphics => self.queue_families.graphics?,
+            QueueFamily::Compute => self.queue_families.compute?,
+            QueueFamily::Transfer => self.queue_families.transfer?,
+            QueueFamily::SparseBinding => self.queue_families.sparse_binding?,
+            QueueFamily::Protected => self.queue_families.protected?,
+            QueueFamily::Present => self.queue_families.present?,
+        };
+
+        Some(self.get_queue_for_family_idx(family_idx))
+    }
+
+    fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
+        let mut queue = MaybeUninit::<VkQueue>::uninit();
+
+        unsafe {
+            vkGetDeviceQueue(self.device, family_idx, 0, queue.as_mut_ptr());
+            queue.assume_init()
         }
     }
 }
@@ -212,6 +225,8 @@ fn get_queue_families(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> Q
         families
     };
 
+    print_queue_families(&family_properties);
+
     for (i, f) in family_properties.iter().enumerate() {
         let idx: u32 = i.try_into().unwrap();
         let opt = Some(idx);
@@ -244,6 +259,41 @@ fn get_queue_families(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> Q
     }
 
     families
+}
+
+fn print_queue_families(family_properties: &[VkQueueFamilyProperties]) {
+    println!("Queue families:");
+
+    for f in family_properties {
+        print!("\tFlags: ");
+
+        if f.queueFlags & VK_QUEUE_GRAPHICS_BIT != 0 {
+            print!("graphics ");
+        }
+        if f.queueFlags & VK_QUEUE_COMPUTE_BIT != 0 {
+            print!("compute");
+        }
+        if f.queueFlags & VK_QUEUE_TRANSFER_BIT != 0 {
+            print!("transfer");
+        }
+        if f.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT != 0 {
+            print!("sparse_binding");
+        }
+        if f.queueFlags & VK_QUEUE_PROTECTED_BIT != 0 {
+            print!("protected");
+        }
+
+        println!();
+
+        println!("\tCount: {}", f.queueCount);
+        println!("\tTimestamp bits: {}", f.timestampValidBits);
+        println!(
+            "\tMin image transfer: {}x{}x{}",
+            f.minImageTransferGranularity.width,
+            f.minImageTransferGranularity.height,
+            f.minImageTransferGranularity.depth
+        );
+    }
 }
 
 fn supports_required_extensions(phys_device: VkPhysicalDevice) -> bool {

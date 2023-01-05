@@ -58,8 +58,8 @@ impl State {
         let instance = vk::Instance::new("vxtr", (1, 0, 0), glfw_window);
         let device = vk::Device::new(&instance);
 
-        let gfx_queue = get_queue_for_family_idx(device, queue_families.graphics.unwrap());
-        let present_queue = get_queue_for_family_idx(device, queue_families.present.unwrap());
+        let gfx_queue = device.get_queue(vk::QueueFamily::Graphics).unwrap();
+        let present_queue = device.get_queue(vk::QueueFamily::Present).unwrap();
         let (swapchain, image_format, extent) =
             create_swapchain(glfw_window, phys_device, device, instance.surface(), true);
         let swapchain_images = get_swapchain_images(device, swapchain);
@@ -357,15 +357,6 @@ impl Drop for State {
 impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
-    }
-}
-
-fn get_queue_for_family_idx(device: VkDevice, family_idx: u32) -> VkQueue {
-    let mut queue = MaybeUninit::<VkQueue>::uninit();
-
-    unsafe {
-        vkGetDeviceQueue(device, family_idx, 0, queue.as_mut_ptr());
-        queue.assume_init()
     }
 }
 
