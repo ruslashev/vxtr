@@ -1,23 +1,15 @@
 use glfw_sys::*;
 
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
-use crate::{Device, Instance, QueueFamilies, QueueFamily};
+use crate::{Device, Instance, QueueFamilies, QueueFamily, SwapchainSupport};
 
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-#[derive(Default)]
-struct SwapchainSupportDetails {
-    capabilities: VkSurfaceCapabilitiesKHR,
-    formats: Vec<VkSurfaceFormatKHR>,
-    present_modes: Vec<VkPresentModeKHR>,
-}
-
 impl Device {
     pub fn new(instance: &Instance) -> Self {
-        let phys_device = get_phys_device(instance.as_raw(), instance.surface());
-        let queue_families = get_queue_families(phys_device, instance.surface());
+        let (phys_device, queue_families, swapchain_support) = get_phys_device(instance);
         let device = create_logical_device(phys_device, &queue_families);
 
         println!("Chosen device name: {:?}", get_device_name(phys_device));
@@ -26,6 +18,7 @@ impl Device {
             phys_device,
             device,
             queue_families,
+            swapchain_support,
         }
     }
 
@@ -60,24 +53,24 @@ impl Drop for Device {
     }
 }
 
-fn get_phys_device(instance: VkInstance, surface: VkSurfaceKHR) -> VkPhysicalDevice {
+fn get_phys_device(instance: &Instance) -> (VkPhysicalDevice, QueueFamilies, SwapchainSupport) {
     let devices = unsafe {
         let mut count = 0;
-        vkEnumeratePhysicalDevices(instance, &mut count, ptr::null_mut());
+        vkEnumeratePhysicalDevices(instance.as_raw(), &mut count, ptr::null_mut());
 
         assert!(count > 0, "No Vulkan-capable GPU found");
 
         let mut devices = Vec::with_capacity(count as usize);
         devices.resize(count as usize, ptr::null_mut());
 
-        vkEnumeratePhysicalDevices(instance, &mut count, devices.as_mut_ptr());
+        vkEnumeratePhysicalDevices(instance.as_raw(), &mut count, devices.as_mut_ptr());
 
         devices
     };
 
     print_devices(&devices, false);
 
-    choose_phys_device(&devices, surface)
+    choose_phys_device(&devices, instance.surface)
 }
 
 fn print_devices(phys_devices: &[VkPhysicalDevice], verbose: bool) {
@@ -163,7 +156,7 @@ fn print_device_features(f: &VkPhysicalDeviceFeatures) {
 fn choose_phys_device(
     phys_devices: &[VkPhysicalDevice],
     surface: VkSurfaceKHR,
-) -> VkPhysicalDevice {
+) -> (VkPhysicalDevice, QueueFamilies, SwapchainSupport) {
     let mut devices_and_types = Vec::with_capacity(phys_devices.len());
 
     for dev in phys_devices {
@@ -181,8 +174,8 @@ fn choose_phys_device(
 
     for type_ in type_priorities {
         if let Some(device) = first_device_of_type(&devices_and_types, type_) {
-            if is_device_suitable(device, surface) {
-                return device;
+            if let Some((queue_families, swapchain_support)) = is_device_suitable(device, surface) {
+                return (device, queue_families, swapchain_support);
             }
         }
     }
@@ -197,17 +190,27 @@ fn first_device_of_type(
     dt.iter().find(|(_, type_)| *type_ == type_predicate).map(|(dev, _)| *dev)
 }
 
-fn is_device_suitable(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> bool {
+fn is_device_suitable(
+    phys_device: VkPhysicalDevice,
+    surface: VkSurfaceKHR,
+) -> Option<(QueueFamilies, SwapchainSupport)> {
     let queue_families = get_queue_families(phys_device, surface);
-    let extensions_supported = supports_required_extensions(phys_device);
-    let swapchain_adequate = if extensions_supported {
-        let swapchain_support = query_swapchain_support(phys_device, surface);
-        !swapchain_support.formats.is_empty() && !swapchain_support.present_modes.is_empty()
-    } else {
-        false
-    };
 
-    queue_families.graphics.is_some() && queue_families.present.is_some() && swapchain_adequate
+    if queue_families.graphics.is_none() || queue_families.present.is_none() {
+        return None;
+    }
+
+    if !supports_required_extensions(phys_device) {
+        return None;
+    }
+
+    let swapchain_support = query_swapchain_support(phys_device, surface);
+
+    if swapchain_support.formats.is_empty() || swapchain_support.present_modes.is_empty() {
+        return None;
+    }
+
+    Some((queue_families, swapchain_support))
 }
 
 fn get_queue_families(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> QueueFamilies {
@@ -350,8 +353,8 @@ fn get_supported_extensions(phys_device: VkPhysicalDevice) -> Vec<VkExtensionPro
 fn query_swapchain_support(
     phys_device: VkPhysicalDevice,
     surface: VkSurfaceKHR,
-) -> SwapchainSupportDetails {
-    let mut details = SwapchainSupportDetails::default();
+) -> SwapchainSupport {
+    let mut details = SwapchainSupport::default();
 
     unsafe {
         vkGetPhysicalDeviceSurfaceCapabilitiesKHR(phys_device, surface, &mut details.capabilities)

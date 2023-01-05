@@ -20,6 +20,7 @@ pub struct Device {
     phys_device: VkPhysicalDevice,
     device: VkDevice,
     queue_families: QueueFamilies,
+    swapchain_support: SwapchainSupport,
 }
 
 pub enum QueueFamily {
@@ -39,4 +40,11 @@ struct QueueFamilies {
     sparse_binding: Option<u32>,
     protected: Option<u32>,
     present: Option<u32>,
+}
+
+#[derive(Default)]
+struct SwapchainSupport {
+    capabilities: VkSurfaceCapabilitiesKHR,
+    formats: Vec<VkSurfaceFormatKHR>,
+    present_modes: Vec<VkPresentModeKHR>,
 }
