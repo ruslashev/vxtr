@@ -39,12 +39,50 @@ impl Device {
         Some(self.get_queue_for_family_idx(family_idx))
     }
 
-    pub fn create_swapchain(
-        &self,
-        instance: &Instance,
-        verbose: bool,
-    ) -> Swapchain {
+    pub fn create_swapchain(&self, instance: &Instance, verbose: bool) -> Swapchain {
         Swapchain::from_device(self, instance, verbose)
+    }
+
+    pub fn create_image_views(
+        &self,
+        swapchain_images: &[VkImage],
+        image_format: VkFormat,
+    ) -> Vec<VkImageView> {
+        let mut image_views = Vec::with_capacity(swapchain_images.len());
+
+        for img in swapchain_images {
+            let create_info = VkImageViewCreateInfo {
+                sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+                image: *img,
+                viewType: VK_IMAGE_VIEW_TYPE_2D,
+                format: image_format,
+                components: VkComponentMapping {
+                    r: VK_COMPONENT_SWIZZLE_IDENTITY,
+                    g: VK_COMPONENT_SWIZZLE_IDENTITY,
+                    b: VK_COMPONENT_SWIZZLE_IDENTITY,
+                    a: VK_COMPONENT_SWIZZLE_IDENTITY,
+                },
+                subresourceRange: VkImageSubresourceRange {
+                    aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,
+                    baseMipLevel: 0,
+                    levelCount: 1,
+                    baseArrayLayer: 0,
+                    layerCount: 1,
+                },
+                ..Default::default()
+            };
+
+            let image_view = unsafe {
+                let mut view = MaybeUninit::<VkImageView>::uninit();
+                vkCreateImageView(self.device, &create_info, ptr::null(), view.as_mut_ptr())
+                    .check_err("create image view");
+                view.assume_init()
+            };
+
+            image_views.push(image_view);
+        }
+
+        image_views
     }
 
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {

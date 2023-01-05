@@ -71,7 +71,11 @@ impl Instance {
 
         let surface = create_surface(raw, glfw_window);
 
-        Self { raw, surface, glfw_window }
+        Self {
+            raw,
+            surface,
+            glfw_window,
+        }
     }
 
     pub fn as_raw(&self) -> VkInstance {

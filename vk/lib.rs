@@ -9,8 +9,8 @@ use glfw_sys::*;
 
 mod device;
 mod instance;
-mod utils;
 mod swapchain;
+mod utils;
 
 pub struct Instance {
     raw: VkInstance,

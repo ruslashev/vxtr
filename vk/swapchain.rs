@@ -11,7 +11,8 @@ impl<'d> Swapchain<'d> {
         let surface_format = choose_swapchain_surface_format(&device.swapchain_support.formats);
         let present_mode =
             choose_swapchain_present_mode(&device.swapchain_support.present_modes, verbose);
-        let extent = choose_swapchain_extent(instance.glfw_window, device.swapchain_support.capabilities);
+        let extent =
+            choose_swapchain_extent(instance.glfw_window, device.swapchain_support.capabilities);
 
         let max_image_count = device.swapchain_support.capabilities.maxImageCount;
         let mut image_count = device.swapchain_support.capabilities.minImageCount + 1;
@@ -53,8 +54,13 @@ impl<'d> Swapchain<'d> {
         let raw = unsafe {
             let mut swapchain = MaybeUninit::<VkSwapchainKHR>::uninit();
 
-            vkCreateSwapchainKHR(device.as_raw(), &create_info, ptr::null(), swapchain.as_mut_ptr())
-                .check_err("create swapchain");
+            vkCreateSwapchainKHR(
+                device.as_raw(),
+                &create_info,
+                ptr::null(),
+                swapchain.as_mut_ptr(),
+            )
+            .check_err("create swapchain");
 
             swapchain.assume_init()
         };
@@ -75,10 +81,19 @@ impl<'d> Swapchain<'d> {
             let mut images = Vec::with_capacity(count as usize);
             images.resize(count as usize, ptr::null_mut());
 
-            vkGetSwapchainImagesKHR(self.device.as_raw(), self.raw, &mut count, images.as_mut_ptr());
+            vkGetSwapchainImagesKHR(
+                self.device.as_raw(),
+                self.raw,
+                &mut count,
+                images.as_mut_ptr(),
+            );
 
             images
         }
+    }
+
+    pub fn format(&self) -> VkFormat {
+        self.format
     }
 }
 

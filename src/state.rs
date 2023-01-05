@@ -61,7 +61,7 @@ impl State<'_> {
         let present_queue = device.get_queue(vk::QueueFamily::Present).unwrap();
         let swapchain = device.create_swapchain(&instance, true);
         let swapchain_images = swapchain.get_images();
-        let image_views = create_image_views(device, &swapchain_images, image_format);
+        let image_views = device.create_image_views(&swapchain_images, swapchain.format());
         let render_pass = create_render_pass(device, image_format);
         let push_constant_range = get_push_constant_range();
         let pipeline_layout = create_pipeline_layout(device, push_constant_range);
@@ -356,48 +356,6 @@ impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
     }
-}
-
-fn create_image_views(
-    device: VkDevice,
-    swapchain_images: &[VkImage],
-    image_format: VkFormat,
-) -> Vec<VkImageView> {
-    let mut image_views = Vec::with_capacity(swapchain_images.len());
-
-    for img in swapchain_images {
-        let create_info = VkImageViewCreateInfo {
-            sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            image: *img,
-            viewType: VK_IMAGE_VIEW_TYPE_2D,
-            format: image_format,
-            components: VkComponentMapping {
-                r: VK_COMPONENT_SWIZZLE_IDENTITY,
-                g: VK_COMPONENT_SWIZZLE_IDENTITY,
-                b: VK_COMPONENT_SWIZZLE_IDENTITY,
-                a: VK_COMPONENT_SWIZZLE_IDENTITY,
-            },
-            subresourceRange: VkImageSubresourceRange {
-                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,
-                baseMipLevel: 0,
-                levelCount: 1,
-                baseArrayLayer: 0,
-                layerCount: 1,
-            },
-            ..Default::default()
-        };
-
-        let image_view = unsafe {
-            let mut view = MaybeUninit::<VkImageView>::uninit();
-            vkCreateImageView(device, &create_info, ptr::null(), view.as_mut_ptr())
-                .check_err("create image view");
-            view.assume_init()
-        };
-
-        image_views.push(image_view);
-    }
-
-    image_views
 }
 
 fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass {
