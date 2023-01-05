@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
-use crate::Instance;
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
+use crate::Instance;
 
 use std::ffi::{c_char, CStr, CString};
 use std::mem::MaybeUninit;
@@ -69,7 +69,7 @@ impl Instance {
             instance.assume_init()
         };
 
-        let surface = Self::create_surface(raw, glfw_window);
+        let surface = create_surface(raw, glfw_window);
 
         Self { raw, surface }
     }
@@ -80,16 +80,6 @@ impl Instance {
 
     pub fn surface(&self) -> VkSurfaceKHR {
         self.surface
-    }
-
-    fn create_surface(raw: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
-        let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
-
-        unsafe {
-            glfwCreateWindowSurface(raw, glfw_window, ptr::null(), surface.as_mut_ptr())
-                .check_err("create window surface");
-            surface.assume_init()
-        }
     }
 }
 
@@ -169,5 +159,15 @@ fn print_validation_layers(layers: &[VkLayerProperties]) {
         let cstr = unsafe { CStr::from_ptr(layer.layerName.as_ptr()) };
 
         println!("\t{:?}", cstr);
+    }
+}
+
+fn create_surface(instance: VkInstance, glfw_window: *mut GLFWwindow) -> VkSurfaceKHR {
+    let mut surface = MaybeUninit::<VkSurfaceKHR>::uninit();
+
+    unsafe {
+        glfwCreateWindowSurface(instance, glfw_window, ptr::null(), surface.as_mut_ptr())
+            .check_err("create window surface");
+        surface.assume_init()
     }
 }
