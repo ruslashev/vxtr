@@ -6,9 +6,6 @@ use std::ptr;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
-#[allow(clippy::cast_sign_loss)]
-const SUBPASS_EXTERNAL: u32 = VK_SUBPASS_EXTERNAL as u32;
-
 trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
@@ -62,9 +59,8 @@ impl State<'_> {
         let swapchain = device.create_swapchain(&instance, true);
         let swapchain_images = swapchain.get_images();
         let image_views = device.create_image_views(&swapchain_images, swapchain.format());
-        let render_pass = create_render_pass(device, image_format);
-        let push_constant_range = get_push_constant_range();
-        let pipeline_layout = create_pipeline_layout(device, push_constant_range);
+        let render_pass = device.create_render_pass(swapchain.format());
+        let pipeline_layout = device.create_pipeline_layout(VK_SHADER_STAGE_FRAGMENT_BIT);
         let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
@@ -358,62 +354,6 @@ impl CheckVkError for VkResult {
     }
 }
 
-fn create_render_pass(device: VkDevice, image_format: VkFormat) -> VkRenderPass {
-    let color_attachment = VkAttachmentDescription {
-        format: image_format,
-        samples: VK_SAMPLE_COUNT_1_BIT,
-        loadOp: VK_ATTACHMENT_LOAD_OP_CLEAR,
-        storeOp: VK_ATTACHMENT_STORE_OP_STORE,
-        stencilLoadOp: VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        stencilStoreOp: VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        initialLayout: VK_IMAGE_LAYOUT_UNDEFINED,
-        finalLayout: VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        ..Default::default()
-    };
-
-    let color_attachment_ref = VkAttachmentReference {
-        attachment: 0,
-        layout: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    };
-
-    let subpass_desc = VkSubpassDescription {
-        pipelineBindPoint: VK_PIPELINE_BIND_POINT_GRAPHICS,
-        colorAttachmentCount: 1,
-        pColorAttachments: &color_attachment_ref,
-        ..Default::default()
-    };
-
-    let subpass_dependency = VkSubpassDependency {
-        srcSubpass: SUBPASS_EXTERNAL,
-        dstSubpass: 0,
-        srcStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        srcAccessMask: 0,
-        dstStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        dstAccessMask: VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        ..Default::default()
-    };
-
-    let create_info = VkRenderPassCreateInfo {
-        sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        attachmentCount: 1,
-        pAttachments: &color_attachment,
-        subpassCount: 1,
-        pSubpasses: &subpass_desc,
-        dependencyCount: 1,
-        pDependencies: &subpass_dependency,
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut render_pass = MaybeUninit::<VkRenderPass>::uninit();
-
-        vkCreateRenderPass(device, &create_info, ptr::null_mut(), render_pass.as_mut_ptr())
-            .check_err("create render pass");
-
-        render_pass.assume_init()
-    }
-}
-
 fn create_graphics_pipeline(
     device: VkDevice,
     extent: VkExtent2D,
@@ -669,35 +609,6 @@ fn create_blending_info(
         attachmentCount: 1,
         pAttachments: attachment,
         ..Default::default()
-    }
-}
-
-fn get_push_constant_range() -> VkPushConstantRange {
-    VkPushConstantRange {
-        stageFlags: VK_SHADER_STAGE_FRAGMENT_BIT,
-        offset: 0,
-        size: size_of::<PushConstants>().try_into().unwrap(),
-    }
-}
-
-fn create_pipeline_layout(
-    device: VkDevice,
-    push_constant_range: VkPushConstantRange,
-) -> VkPipelineLayout {
-    let create_info = VkPipelineLayoutCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-        pushConstantRangeCount: 1,
-        pPushConstantRanges: &push_constant_range,
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut layout = MaybeUninit::<VkPipelineLayout>::uninit();
-
-        vkCreatePipelineLayout(device, &create_info, ptr::null_mut(), layout.as_mut_ptr())
-            .check_err("create pipeline layout");
-
-        layout.assume_init()
     }
 }
 

@@ -4,7 +4,7 @@ use crate::utils::{convert_to_c_ptrs, CheckVkError};
 use crate::{Device, Instance, QueueFamilies, QueueFamily, Swapchain, SwapchainSupport};
 
 use std::ffi::{CStr, CString};
-use std::mem::MaybeUninit;
+use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
 impl Device {
@@ -83,6 +83,91 @@ impl Device {
         }
 
         image_views
+    }
+
+    pub fn create_render_pass(&self, image_format: VkFormat) -> VkRenderPass {
+        let color_attachment = VkAttachmentDescription {
+            format: image_format,
+            samples: VK_SAMPLE_COUNT_1_BIT,
+            loadOp: VK_ATTACHMENT_LOAD_OP_CLEAR,
+            storeOp: VK_ATTACHMENT_STORE_OP_STORE,
+            stencilLoadOp: VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+            stencilStoreOp: VK_ATTACHMENT_STORE_OP_DONT_CARE,
+            initialLayout: VK_IMAGE_LAYOUT_UNDEFINED,
+            finalLayout: VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            ..Default::default()
+        };
+
+        let color_attachment_ref = VkAttachmentReference {
+            attachment: 0,
+            layout: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+
+        let subpass_desc = VkSubpassDescription {
+            pipelineBindPoint: VK_PIPELINE_BIND_POINT_GRAPHICS,
+            colorAttachmentCount: 1,
+            pColorAttachments: &color_attachment_ref,
+            ..Default::default()
+        };
+
+        let subpass_dependency = VkSubpassDependency {
+            srcSubpass: VK_SUBPASS_EXTERNAL as u32,
+            dstSubpass: 0,
+            srcStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            srcAccessMask: 0,
+            dstStageMask: VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            dstAccessMask: VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            ..Default::default()
+        };
+
+        let create_info = VkRenderPassCreateInfo {
+            sType: VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            attachmentCount: 1,
+            pAttachments: &color_attachment,
+            subpassCount: 1,
+            pSubpasses: &subpass_desc,
+            dependencyCount: 1,
+            pDependencies: &subpass_dependency,
+            ..Default::default()
+        };
+
+        unsafe {
+            let mut render_pass = MaybeUninit::<VkRenderPass>::uninit();
+
+            vkCreateRenderPass(
+                self.device,
+                &create_info,
+                ptr::null_mut(),
+                render_pass.as_mut_ptr(),
+            )
+            .check_err("create render pass");
+
+            render_pass.assume_init()
+        }
+    }
+
+    pub fn create_pipeline_layout<PushConstT>(&self, push_const_stages: u32) -> VkPipelineLayout {
+        let push_constant_range = VkPushConstantRange {
+            stageFlags: push_const_stages,
+            offset: 0,
+            size: size_of::<PushConstT>().try_into().unwrap(),
+        };
+
+        let create_info = VkPipelineLayoutCreateInfo {
+            sType: VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+            pushConstantRangeCount: 1,
+            pPushConstantRanges: &push_constant_range,
+            ..Default::default()
+        };
+
+        unsafe {
+            let mut layout = MaybeUninit::<VkPipelineLayout>::uninit();
+
+            vkCreatePipelineLayout(self.device, &create_info, ptr::null_mut(), layout.as_mut_ptr())
+                .check_err("create pipeline layout");
+
+            layout.assume_init()
+        }
     }
 
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
