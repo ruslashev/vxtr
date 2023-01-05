@@ -19,7 +19,7 @@ pub struct State<'d> {
     swapchain: vk::Swapchain<'d>,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
-    render_pass: VkRenderPass,
+    render_pass: vk::RenderPass<'d>,
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
     framebuffers: Vec<VkFramebuffer>,
@@ -337,7 +337,6 @@ impl Drop for State {
 
             vkDestroyPipeline(self.device, self.pipeline, ptr::null());
             vkDestroyPipelineLayout(self.device, self.pipeline_layout, ptr::null());
-            vkDestroyRenderPass(self.device, self.render_pass, ptr::null());
         }
     }
 }

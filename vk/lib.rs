@@ -9,6 +9,7 @@ use glfw_sys::*;
 
 mod device;
 mod instance;
+mod render_pass;
 mod shader;
 mod swapchain;
 mod utils;
@@ -30,6 +31,11 @@ pub struct Swapchain<'d> {
     raw: VkSwapchainKHR,
     format: VkFormat,
     extent: VkExtent2D,
+    device: &'d Device,
+}
+
+pub struct RenderPass<'d> {
+    raw: VkRenderPass,
     device: &'d Device,
 }
 
