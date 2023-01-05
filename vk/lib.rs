@@ -27,22 +27,22 @@ pub struct Device {
     swapchain_support: SwapchainSupport,
 }
 
-pub struct Swapchain<'d> {
+pub struct Swapchain {
     raw: VkSwapchainKHR,
     format: VkFormat,
     extent: VkExtent2D,
-    device: &'d Device,
+    device: VkDevice,
 }
 
-pub struct RenderPass<'d> {
+pub struct RenderPass {
     raw: VkRenderPass,
-    device: &'d Device,
+    device: VkDevice,
 }
 
-pub struct Shader<'d> {
+pub struct Shader {
     module: VkShaderModule,
     stage_info: VkPipelineShaderStageCreateInfo,
-    device: &'d Device,
+    device: VkDevice,
 }
 
 pub enum QueueFamily {

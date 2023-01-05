@@ -7,8 +7,8 @@ use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::ptr;
 
-impl<'d> Shader<'d> {
-    pub fn from_bytes(device: &'d Device, compiled: &[u8], sh_type: ShaderType) -> Self {
+impl Shader {
+    pub fn from_bytes(device: &Device, compiled: &[u8], sh_type: ShaderType) -> Self {
         let module = create_shader_module(device.as_raw(), compiled);
         let entrypoint = CString::new("main").unwrap();
         let stage_info = create_shader_stage_info(module, sh_type, &entrypoint);
@@ -16,7 +16,7 @@ impl<'d> Shader<'d> {
         Self {
             module,
             stage_info,
-            device,
+            device: device.as_raw(),
         }
     }
 
@@ -25,10 +25,10 @@ impl<'d> Shader<'d> {
     }
 }
 
-impl Drop for Shader<'_> {
+impl Drop for Shader {
     fn drop(&mut self) {
         unsafe {
-            vkDestroyShaderModule(self.device.as_raw(), self.module, ptr::null_mut());
+            vkDestroyShaderModule(self.device, self.module, ptr::null_mut());
         }
     }
 }

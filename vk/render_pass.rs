@@ -6,8 +6,8 @@ use crate::{Device, RenderPass};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-impl<'d> RenderPass<'d> {
-    pub fn new(device: &'d Device, image_format: u32) -> Self {
+impl RenderPass {
+    pub fn new(device: &Device, image_format: u32) -> Self {
         let color_attachment = VkAttachmentDescription {
             format: image_format,
             samples: VK_SAMPLE_COUNT_1_BIT,
@@ -67,14 +67,17 @@ impl<'d> RenderPass<'d> {
             render_pass.assume_init()
         };
 
-        Self { raw, device }
+        Self {
+            raw,
+            device: device.as_raw(),
+        }
     }
 }
 
-impl Drop for RenderPass<'_> {
+impl Drop for RenderPass {
     fn drop(&mut self) {
         unsafe {
-            vkDestroyRenderPass(self.device.as_raw(), self.raw, ptr::null());
+            vkDestroyRenderPass(self.device, self.raw, ptr::null());
         }
     }
 }

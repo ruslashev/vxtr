@@ -6,8 +6,8 @@ use crate::{Device, Instance, Swapchain};
 use std::mem::MaybeUninit;
 use std::ptr;
 
-impl<'d> Swapchain<'d> {
-    pub fn from_device(device: &'d Device, instance: &Instance, verbose: bool) -> Self {
+impl Swapchain {
+    pub fn from_device(device: &Device, instance: &Instance, verbose: bool) -> Self {
         let surface_format = choose_swapchain_surface_format(&device.swapchain_support.formats);
         let present_mode =
             choose_swapchain_present_mode(&device.swapchain_support.present_modes, verbose);
@@ -69,24 +69,19 @@ impl<'d> Swapchain<'d> {
             raw,
             format: surface_format.format,
             extent,
-            device,
+            device: device.as_raw(),
         }
     }
 
     pub fn get_images(&self) -> Vec<VkImage> {
         unsafe {
             let mut count = 0;
-            vkGetSwapchainImagesKHR(self.device.as_raw(), self.raw, &mut count, ptr::null_mut());
+            vkGetSwapchainImagesKHR(self.device, self.raw, &mut count, ptr::null_mut());
 
             let mut images = Vec::with_capacity(count as usize);
             images.resize(count as usize, ptr::null_mut());
 
-            vkGetSwapchainImagesKHR(
-                self.device.as_raw(),
-                self.raw,
-                &mut count,
-                images.as_mut_ptr(),
-            );
+            vkGetSwapchainImagesKHR(self.device, self.raw, &mut count, images.as_mut_ptr());
 
             images
         }
@@ -97,10 +92,10 @@ impl<'d> Swapchain<'d> {
     }
 }
 
-impl Drop for Swapchain<'_> {
+impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
-            vkDestroySwapchainKHR(self.device.as_raw(), self.raw, ptr::null());
+            vkDestroySwapchainKHR(self.device, self.raw, ptr::null());
         }
     }
 }

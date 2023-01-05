@@ -10,16 +10,16 @@ trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
 
-pub struct State<'d> {
+pub struct State {
     glfw_window: *mut GLFWwindow,
     instance: vk::Instance,
     device: vk::Device,
     gfx_queue: VkQueue,
     present_queue: VkQueue,
-    swapchain: vk::Swapchain<'d>,
+    swapchain: vk::Swapchain,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
-    render_pass: vk::RenderPass<'d>,
+    render_pass: vk::RenderPass,
     pipeline_layout: VkPipelineLayout,
     pipeline: VkPipeline,
     framebuffers: Vec<VkFramebuffer>,
@@ -44,7 +44,7 @@ struct PushConstants {
     res_y: f32,
 }
 
-impl State<'_> {
+impl State {
     pub fn new(glfw_window: *mut GLFWwindow) -> Self {
         let instance = vk::Instance::new("vxtr", (1, 0, 0), glfw_window);
         let device = vk::Device::new(&instance);
