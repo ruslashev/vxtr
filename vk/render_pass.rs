@@ -72,6 +72,10 @@ impl RenderPass {
             device: device.as_raw(),
         }
     }
+
+    pub fn as_raw(&self) -> VkRenderPass {
+        self.raw
+    }
 }
 
 impl Drop for RenderPass {

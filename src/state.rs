@@ -55,7 +55,22 @@ impl State {
         let image_views = device.create_image_views(&swapchain_images, swapchain.format());
         let render_pass = device.create_render_pass(swapchain.format());
         let pipeline_layout = device.create_pipeline_layout(VK_SHADER_STAGE_FRAGMENT_BIT);
-        let pipeline = create_graphics_pipeline(device, extent, render_pass, pipeline_layout);
+
+        let vert_compiled = include_bytes!("../build/shader.vert.spv");
+        let frag_compiled = include_bytes!("../build/shader.frag.spv");
+
+        let vert_shader = device.create_shader(vert_compiled, vk::ShaderType::Vertex);
+        let frag_shader = device.create_shader(frag_compiled, vk::ShaderType::Fragment);
+
+        let shaders = [vert_shader, frag_shader];
+
+        let pipeline = device.create_pipeline(
+            &[vert_shader, frag_shader],
+            &swapchain,
+            &render_pass,
+            &pipeline_layout,
+        );
+
         let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
         let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
@@ -333,8 +348,6 @@ impl Drop for State {
 
             vkDestroyBuffer(self.device, self.index_buffer, ptr::null());
             vkFreeMemory(self.device, self.index_buffer_memory, ptr::null());
-
-            vkDestroyPipeline(self.device, self.pipeline, ptr::null());
         }
     }
 }
@@ -342,203 +355,6 @@ impl Drop for State {
 impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
-    }
-}
-
-fn create_graphics_pipeline(
-    device: VkDevice,
-    extent: VkExtent2D,
-    render_pass: VkRenderPass,
-    pipeline_layout: VkPipelineLayout,
-) -> VkPipeline {
-    let vert_compiled = include_bytes!("../build/shader.vert.spv");
-    let frag_compiled = include_bytes!("../build/shader.frag.spv");
-
-    let vert_shader = device.create_shader(vert_compiled, vk::ShaderType::Vertex);
-    let frag_shader = device.create_shader(frag_compiled, vk::ShaderType::Fragment);
-
-    let shader_stage_infos = [vert_shader.stage_info(), frag_shader.stage_info()];
-
-    let binding_desc = get_binding_description();
-    let attr_desc = get_attribute_description();
-
-    let vertex_input = create_pipeline_vertex_input_info(&binding_desc, &attr_desc);
-
-    let input_assembly = create_pipeline_input_assembly();
-
-    let viewport = create_pipeline_viewport(extent);
-    let scissor = create_pipeline_scissor(extent);
-    let viewport_state = create_static_viewport_state_info(&viewport, &scissor);
-
-    let rasterizer = create_rasterizer_info();
-
-    let multisampling = create_multisampling_info();
-
-    let disabled_blending = create_disabled_blending_attachment();
-    let blending = create_blending_info(&disabled_blending);
-
-    let create_info = VkGraphicsPipelineCreateInfo {
-        sType: VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
-        stageCount: 2,
-        pStages: shader_stage_infos.as_ptr(),
-        pVertexInputState: &vertex_input,
-        pInputAssemblyState: &input_assembly,
-        pViewportState: &viewport_state,
-        pRasterizationState: &rasterizer,
-        pMultisampleState: &multisampling,
-        pColorBlendState: &blending,
-        layout: pipeline_layout,
-        renderPass: render_pass,
-        subpass: 0,
-        ..Default::default()
-    };
-
-    let graphics_pipeline = unsafe {
-        let mut pipeline = MaybeUninit::<VkPipeline>::uninit();
-
-        vkCreateGraphicsPipelines(
-            device,
-            ptr::null_mut(),
-            1,
-            &create_info,
-            ptr::null_mut(),
-            pipeline.as_mut_ptr(),
-        )
-        .check_err("create pipeline");
-
-        pipeline.assume_init()
-    };
-
-    graphics_pipeline
-}
-
-fn get_binding_description() -> VkVertexInputBindingDescription {
-    let vec2_stride = 2 * size_of::<f32>();
-
-    VkVertexInputBindingDescription {
-        binding: 0,
-        stride: vec2_stride.try_into().unwrap(),
-        inputRate: VK_VERTEX_INPUT_RATE_VERTEX,
-    }
-}
-
-fn get_attribute_description() -> VkVertexInputAttributeDescription {
-    VkVertexInputAttributeDescription {
-        location: 0,
-        binding: 0,
-        format: VK_FORMAT_R32G32_SFLOAT,
-        offset: 0,
-    }
-}
-
-fn create_pipeline_vertex_input_info(
-    binding_desc: &VkVertexInputBindingDescription,
-    attr_desc: &VkVertexInputAttributeDescription,
-) -> VkPipelineVertexInputStateCreateInfo {
-    VkPipelineVertexInputStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-        vertexBindingDescriptionCount: 1,
-        pVertexBindingDescriptions: binding_desc,
-        vertexAttributeDescriptionCount: 1,
-        pVertexAttributeDescriptions: attr_desc,
-        ..Default::default()
-    }
-}
-
-fn create_pipeline_input_assembly() -> VkPipelineInputAssemblyStateCreateInfo {
-    VkPipelineInputAssemblyStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-        topology: VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        primitiveRestartEnable: 0,
-        ..Default::default()
-    }
-}
-
-fn create_pipeline_viewport(extent: VkExtent2D) -> VkViewport {
-    VkViewport {
-        x: 0.0,
-        y: 0.0,
-        width: u32_to_f32_nowarn(extent.width),
-        height: u32_to_f32_nowarn(extent.height),
-        minDepth: 0.0,
-        maxDepth: 1.0,
-    }
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn u32_to_f32_nowarn(x: u32) -> f32 {
-    let mantissa = x & 0x007f_ffff; // 23 set bits
-    mantissa as f32
-}
-
-fn create_pipeline_scissor(extent: VkExtent2D) -> VkRect2D {
-    VkRect2D {
-        offset: VkOffset2D { x: 0, y: 0 },
-        extent,
-    }
-}
-
-fn create_static_viewport_state_info(
-    viewport: &VkViewport,
-    scissor: &VkRect2D,
-) -> VkPipelineViewportStateCreateInfo {
-    VkPipelineViewportStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
-        viewportCount: 1,
-        pViewports: viewport as *const VkViewport,
-        scissorCount: 1,
-        pScissors: scissor as *const VkRect2D,
-        ..Default::default()
-    }
-}
-
-fn create_rasterizer_info() -> VkPipelineRasterizationStateCreateInfo {
-    VkPipelineRasterizationStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-        depthClampEnable: 0,
-        rasterizerDiscardEnable: 0,
-        polygonMode: VK_POLYGON_MODE_FILL,
-        lineWidth: 1.0,
-        cullMode: VK_CULL_MODE_BACK_BIT,
-        frontFace: VK_FRONT_FACE_CLOCKWISE,
-        depthBiasEnable: 0,
-        ..Default::default()
-    }
-}
-
-fn create_multisampling_info() -> VkPipelineMultisampleStateCreateInfo {
-    VkPipelineMultisampleStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-        sampleShadingEnable: 0,
-        rasterizationSamples: VK_SAMPLE_COUNT_1_BIT,
-        minSampleShading: 1.0,
-        pSampleMask: ptr::null(),
-        alphaToCoverageEnable: 0,
-        alphaToOneEnable: 0,
-        ..Default::default()
-    }
-}
-
-fn create_disabled_blending_attachment() -> VkPipelineColorBlendAttachmentState {
-    VkPipelineColorBlendAttachmentState {
-        colorWriteMask: VK_COLOR_COMPONENT_R_BIT
-            | VK_COLOR_COMPONENT_G_BIT
-            | VK_COLOR_COMPONENT_B_BIT
-            | VK_COLOR_COMPONENT_A_BIT,
-        blendEnable: 0,
-        ..Default::default()
-    }
-}
-
-fn create_blending_info(
-    attachment: &VkPipelineColorBlendAttachmentState,
-) -> VkPipelineColorBlendStateCreateInfo {
-    VkPipelineColorBlendStateCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
-        logicOpEnable: 0,
-        attachmentCount: 1,
-        pAttachments: attachment,
-        ..Default::default()
     }
 }
 

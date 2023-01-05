@@ -51,6 +51,11 @@ pub struct PipelineLayout {
     device: VkDevice,
 }
 
+pub struct Pipeline {
+    raw: VkPipeline,
+    device: VkDevice,
+}
+
 pub enum QueueFamily {
     Graphics,
     Compute,
