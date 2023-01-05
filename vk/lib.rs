@@ -8,6 +8,7 @@
 use glfw_sys::*;
 
 mod device;
+mod framebuffer;
 mod instance;
 mod pipeline;
 mod render_pass;
@@ -53,6 +54,11 @@ pub struct PipelineLayout {
 
 pub struct Pipeline {
     raw: VkPipeline,
+    device: VkDevice,
+}
+
+pub struct Framebuffer {
+    raw: VkFramebuffer,
     device: VkDevice,
 }
 

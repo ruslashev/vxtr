@@ -97,6 +97,15 @@ impl Device {
         Shader::from_bytes(self, compiled, sh_type)
     }
 
+    pub fn create_framebuffer(
+        &self,
+        render_pass: &RenderPass,
+        image_view: &VkImageView,
+        swapchain: &Swapchain,
+    ) -> Framebuffer {
+        Framebuffer::new(self, render_pass, image_view, swapchain)
+    }
+
     pub fn create_pipeline(
         &self,
         shaders: &[Shader],
@@ -105,6 +114,21 @@ impl Device {
         pipeline_layout: &PipelineLayout,
     ) -> Pipeline {
         Pipeline::new(self, shaders, swapchain, render_pass, pipeline_layout)
+    }
+
+    pub fn create_framebuffers(
+        &self,
+        render_pass: &RenderPass,
+        image_views: &[VkImageView],
+        swapchain: &Swapchain,
+    ) -> Vec<Framebuffer> {
+        let mut framebuffers = Vec::with_capacity(image_views.len());
+
+        for image_view in image_views {
+            framebuffers.push(self.create_framebuffer(render_pass, image_view, swapchain));
+        }
+
+        framebuffers
     }
 
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {

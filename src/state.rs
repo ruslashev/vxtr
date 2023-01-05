@@ -71,7 +71,7 @@ impl State {
             &pipeline_layout,
         );
 
-        let framebuffers = create_framebuffers(device, &image_views, extent, render_pass);
+        let framebuffers = device.create_framebuffers(&render_pass, &image_views, &swapchain);
         let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
         let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
@@ -291,7 +291,7 @@ impl State {
         );
         let swapchain_images = get_swapchain_images(self.device, swapchain);
         let image_views = create_image_views(self.device, &swapchain_images, image_format);
-        let framebuffers = create_framebuffers(self.device, &image_views, extent, self.render_pass);
+        let framebuffers = self.device.create_framebuffers(&image_views, &swapchain, &render_pass);
 
         self.swapchain = swapchain;
         self.extent = extent;
@@ -356,41 +356,6 @@ impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
     }
-}
-
-fn create_framebuffers(
-    device: VkDevice,
-    image_views: &[VkImageView],
-    extent: VkExtent2D,
-    render_pass: VkRenderPass,
-) -> Vec<VkFramebuffer> {
-    let mut framebuffers = Vec::with_capacity(image_views.len());
-
-    for image_view in image_views {
-        let create_info = VkFramebufferCreateInfo {
-            sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            renderPass: render_pass,
-            attachmentCount: 1,
-            pAttachments: image_view,
-            width: extent.width,
-            height: extent.height,
-            layers: 1,
-            ..Default::default()
-        };
-
-        let framebuffer = unsafe {
-            let mut fb = MaybeUninit::<VkFramebuffer>::uninit();
-
-            vkCreateFramebuffer(device, &create_info, ptr::null_mut(), fb.as_mut_ptr())
-                .check_err("create framebuffer");
-
-            fb.assume_init()
-        };
-
-        framebuffers.push(framebuffer);
-    }
-
-    framebuffers
 }
 
 fn create_command_pool(device: VkDevice, graphics_queue_family: u32) -> VkCommandPool {
