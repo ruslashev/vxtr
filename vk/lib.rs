@@ -21,6 +21,14 @@ pub struct Device {
     device: VkDevice,
     queue_families: QueueFamilies,
     swapchain_support: SwapchainSupport,
+    glfw_window: *mut GLFWwindow,
+}
+
+pub struct Swapchain<'d> {
+    raw: VkSwapchainKHR,
+    format: VkFormat,
+    extent: VkExtent2D,
+    device: &'d Device,
 }
 
 pub enum QueueFamily {

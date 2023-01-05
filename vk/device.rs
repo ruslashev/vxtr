@@ -1,14 +1,14 @@
 use glfw_sys::*;
 
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
-use crate::{Device, Instance, QueueFamilies, QueueFamily, SwapchainSupport};
+use crate::{Device, Instance, QueueFamilies, QueueFamily, Swapchain, SwapchainSupport};
 
 use std::ffi::{CStr, CString};
 use std::mem::MaybeUninit;
 use std::ptr;
 
 impl Device {
-    pub fn new(instance: &Instance) -> Self {
+    pub fn new(instance: &Instance, glfw_window: *mut GLFWwindow) -> Self {
         let (phys_device, queue_families, swapchain_support) = get_phys_device(instance);
         let device = create_logical_device(phys_device, &queue_families);
 
@@ -19,6 +19,7 @@ impl Device {
             device,
             queue_families,
             swapchain_support,
+            glfw_window,
         }
     }
 
@@ -35,6 +36,70 @@ impl Device {
         Some(self.get_queue_for_family_idx(family_idx))
     }
 
+    pub fn create_swapchain(
+        &self,
+        surface: VkSurfaceKHR,
+        verbose: bool,
+    ) -> Swapchain {
+        let surface_format = choose_swapchain_surface_format(&self.swapchain_support.formats);
+        let present_mode =
+            choose_swapchain_present_mode(&self.swapchain_support.present_modes, verbose);
+        let extent = choose_swapchain_extent(self.glfw_window, self.swapchain_support.capabilities);
+
+        let max_image_count = self.swapchain_support.capabilities.maxImageCount;
+        let mut image_count = self.swapchain_support.capabilities.minImageCount + 1;
+
+        if image_count > max_image_count && max_image_count != 0 {
+            image_count = max_image_count;
+        }
+
+        let gfx_idx = self.queue_families.graphics.unwrap();
+        let present_idx = self.queue_families.present.unwrap();
+        let indices = [gfx_idx, present_idx];
+
+        let (sharing_mode, qf_idx_count, qf_indices) = if gfx_idx == present_idx {
+            (VK_SHARING_MODE_EXCLUSIVE, 0, ptr::null())
+        } else {
+            (VK_SHARING_MODE_CONCURRENT, 2, indices.as_ptr())
+        };
+
+        let create_info = VkSwapchainCreateInfoKHR {
+            sType: VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+            surface,
+            minImageCount: image_count,
+            imageFormat: surface_format.format,
+            imageColorSpace: surface_format.colorSpace,
+            imageExtent: extent,
+            imageArrayLayers: 1,
+            imageUsage: VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            imageSharingMode: sharing_mode,
+            queueFamilyIndexCount: qf_idx_count,
+            pQueueFamilyIndices: qf_indices,
+            preTransform: self.swapchain_support.capabilities.currentTransform,
+            compositeAlpha: VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+            presentMode: present_mode,
+            clipped: 1,
+            oldSwapchain: ptr::null_mut(),
+            ..Default::default()
+        };
+
+        let raw = unsafe {
+            let mut swapchain = MaybeUninit::<VkSwapchainKHR>::uninit();
+
+            vkCreateSwapchainKHR(self.device, &create_info, ptr::null(), swapchain.as_mut_ptr())
+                .check_err("create swapchain");
+
+            swapchain.assume_init()
+        };
+
+        Swapchain {
+            raw,
+            format: surface_format.format,
+            extent,
+            device: self,
+        }
+    }
+
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
         let mut queue = MaybeUninit::<VkQueue>::uninit();
 
@@ -49,6 +114,14 @@ impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             vkDestroyDevice(self.device, ptr::null());
+        }
+    }
+}
+
+impl Drop for Swapchain<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            vkDestroySwapchainKHR(self.device.device, self.raw, ptr::null());
         }
     }
 }
@@ -528,4 +601,85 @@ fn get_device_name(phys_device: VkPhysicalDevice) -> String {
     let cstr = unsafe { CStr::from_ptr(properties.deviceName.as_ptr()) };
 
     cstr.to_str().expect("invalid device name").to_string()
+}
+
+fn choose_swapchain_surface_format(formats: &[VkSurfaceFormatKHR]) -> VkSurfaceFormatKHR {
+    for format in formats {
+        if format.format == VK_FORMAT_B8G8R8_SRGB
+            && format.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+        {
+            return *format;
+        }
+    }
+
+    formats[0]
+}
+
+fn choose_swapchain_present_mode(
+    present_modes: &[VkPresentModeKHR],
+    verbose: bool,
+) -> VkPresentModeKHR {
+    if verbose {
+        print_present_modes(present_modes);
+    }
+
+    let mode_priorities = [
+        VK_PRESENT_MODE_IMMEDIATE_KHR,
+        VK_PRESENT_MODE_FIFO_RELAXED_KHR,
+        VK_PRESENT_MODE_MAILBOX_KHR,
+        VK_PRESENT_MODE_FIFO_KHR,
+    ];
+
+    for mode in mode_priorities {
+        if present_modes.iter().any(|m| *m == mode) {
+            return mode;
+        }
+    }
+
+    VK_PRESENT_MODE_FIFO_KHR
+}
+
+fn print_present_modes(present_modes: &[VkPresentModeKHR]) {
+    println!("Present modes:");
+
+    for mode in present_modes {
+        let desc = match *mode {
+            VK_PRESENT_MODE_IMMEDIATE_KHR => "Immediate",
+            VK_PRESENT_MODE_MAILBOX_KHR => "Mailbox",
+            VK_PRESENT_MODE_FIFO_KHR => "FIFO",
+            VK_PRESENT_MODE_FIFO_RELAXED_KHR => "FIFO relaxed",
+            VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR => "Shared on-demand refresh",
+            VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR => "Shared continuous refresh",
+            _ => "Unknown",
+        };
+
+        println!("\t{}", desc);
+    }
+}
+
+fn choose_swapchain_extent(
+    glfw_window: *mut GLFWwindow,
+    capabilities: VkSurfaceCapabilitiesKHR,
+) -> VkExtent2D {
+    if capabilities.currentExtent.width != u32::MAX {
+        return capabilities.currentExtent;
+    }
+
+    let mut fb_width = 0;
+    let mut fb_height = 0;
+
+    unsafe {
+        glfwGetFramebufferSize(glfw_window, &mut fb_width, &mut fb_height);
+    }
+
+    let fb_width: u32 = fb_width.try_into().unwrap();
+    let fb_height: u32 = fb_height.try_into().unwrap();
+
+    let min = capabilities.minImageExtent;
+    let max = capabilities.maxImageExtent;
+
+    VkExtent2D {
+        width: fb_width.clamp(min.width, max.width),
+        height: fb_height.clamp(min.height, max.height),
+    }
 }
