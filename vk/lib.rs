@@ -10,10 +10,12 @@ use glfw_sys::*;
 mod device;
 mod instance;
 mod utils;
+mod swapchain;
 
 pub struct Instance {
     raw: VkInstance,
     surface: VkSurfaceKHR,
+    glfw_window: *mut GLFWwindow,
 }
 
 pub struct Device {
@@ -21,7 +23,6 @@ pub struct Device {
     device: VkDevice,
     queue_families: QueueFamilies,
     swapchain_support: SwapchainSupport,
-    glfw_window: *mut GLFWwindow,
 }
 
 pub struct Swapchain<'d> {

@@ -13,13 +13,13 @@ trait CheckVkError {
     fn check_err(self, action: &'static str);
 }
 
-pub struct State {
+pub struct State<'d> {
     glfw_window: *mut GLFWwindow,
     instance: vk::Instance,
     device: vk::Device,
     gfx_queue: VkQueue,
     present_queue: VkQueue,
-    swapchain: VkSwapchainKHR,
+    swapchain: vk::Swapchain<'d>,
     extent: VkExtent2D,
     image_views: Vec<VkImageView>,
     render_pass: VkRenderPass,
@@ -53,15 +53,13 @@ struct PushConstants {
     res_y: f32,
 }
 
-impl State {
+impl State<'_> {
     pub fn new(glfw_window: *mut GLFWwindow) -> Self {
         let instance = vk::Instance::new("vxtr", (1, 0, 0), glfw_window);
-        let device = vk::Device::new(&instance, glfw_window);
+        let device = vk::Device::new(&instance);
         let gfx_queue = device.get_queue(vk::QueueFamily::Graphics).unwrap();
         let present_queue = device.get_queue(vk::QueueFamily::Present).unwrap();
-
-        let (swapchain, image_format, extent) =
-            create_swapchain(glfw_window, phys_device, device, instance.surface(), true);
+        let swapchain = device.create_swapchain(&instance, true);
 
         let swapchain_images = get_swapchain_images(device, swapchain);
         let image_views = create_image_views(device, &swapchain_images, image_format);
