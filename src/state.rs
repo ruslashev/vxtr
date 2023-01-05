@@ -37,12 +37,6 @@ pub struct State<'d> {
     current_time: f64,
 }
 
-#[derive(Clone, Copy)]
-enum ShaderType {
-    Vertex,
-    Fragment,
-}
-
 #[allow(unused)] // False positive
 struct PushConstants {
     time: f32,
@@ -363,15 +357,10 @@ fn create_graphics_pipeline(
     let vert_compiled = include_bytes!("../build/shader.vert.spv");
     let frag_compiled = include_bytes!("../build/shader.frag.spv");
 
-    let vert_shader_mod = create_shader_module(device, vert_compiled);
-    let frag_shader_mod = create_shader_module(device, frag_compiled);
+    let vert_shader = device.create_shader(vert_compiled, vk::ShaderType::Vertex);
+    let frag_shader = device.create_shader(frag_compiled, vk::ShaderType::Fragment);
 
-    let entrypoint_main = CString::new("main").unwrap();
-
-    let shader_stage_infos = [
-        create_shader_stage_info(vert_shader_mod, ShaderType::Vertex, &entrypoint_main),
-        create_shader_stage_info(frag_shader_mod, ShaderType::Fragment, &entrypoint_main),
-    ];
+    let shader_stage_infos = [vert_shader.stage_info(), frag_shader.stage_info()];
 
     let binding_desc = get_binding_description();
     let attr_desc = get_attribute_description();
@@ -423,63 +412,7 @@ fn create_graphics_pipeline(
         pipeline.assume_init()
     };
 
-    unsafe {
-        vkDestroyShaderModule(device, vert_shader_mod, ptr::null_mut());
-        vkDestroyShaderModule(device, frag_shader_mod, ptr::null_mut());
-    }
-
     graphics_pipeline
-}
-
-fn create_shader_module(device: VkDevice, bytes: &[u8]) -> VkShaderModule {
-    let transmuted_copy = pack_to_u32s(bytes);
-
-    let create_info = VkShaderModuleCreateInfo {
-        sType: VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        codeSize: bytes.len(),
-        pCode: transmuted_copy.as_ptr(),
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut shader_module = MaybeUninit::<VkShaderModule>::uninit();
-
-        vkCreateShaderModule(device, &create_info, ptr::null_mut(), shader_module.as_mut_ptr())
-            .check_err("create shader module");
-
-        shader_module.assume_init()
-    }
-}
-
-fn pack_to_u32s(bytes: &[u8]) -> Vec<u32> {
-    assert!(bytes.len() % 4 == 0, "code length must be a multiple of 4");
-
-    bytes
-        .chunks_exact(4)
-        .map(|chunk| match chunk {
-            &[b0, b1, b2, b3] => u32::from_ne_bytes([b0, b1, b2, b3]),
-            _ => unreachable!(),
-        })
-        .collect()
-}
-
-fn create_shader_stage_info(
-    shader_module: VkShaderModule,
-    sh_type: ShaderType,
-    entrypoint: &CString,
-) -> VkPipelineShaderStageCreateInfo {
-    let stage = match &sh_type {
-        ShaderType::Vertex => VK_SHADER_STAGE_VERTEX_BIT,
-        ShaderType::Fragment => VK_SHADER_STAGE_FRAGMENT_BIT,
-    };
-
-    VkPipelineShaderStageCreateInfo {
-        sType: VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        stage,
-        module: shader_module,
-        pName: entrypoint.as_ptr(),
-        ..Default::default()
-    }
 }
 
 fn get_binding_description() -> VkVertexInputBindingDescription {

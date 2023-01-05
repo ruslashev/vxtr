@@ -9,6 +9,7 @@ use glfw_sys::*;
 
 mod device;
 mod instance;
+mod shader;
 mod swapchain;
 mod utils;
 
@@ -32,6 +33,12 @@ pub struct Swapchain<'d> {
     device: &'d Device,
 }
 
+pub struct Shader<'d> {
+    module: VkShaderModule,
+    stage_info: VkPipelineShaderStageCreateInfo,
+    device: &'d Device,
+}
+
 pub enum QueueFamily {
     Graphics,
     Compute,
@@ -39,6 +46,12 @@ pub enum QueueFamily {
     SparseBinding,
     Protected,
     Present,
+}
+
+#[derive(Clone, Copy)]
+pub enum ShaderType {
+    Vertex,
+    Fragment,
 }
 
 #[derive(Default)]

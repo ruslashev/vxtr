@@ -1,7 +1,9 @@
 use glfw_sys::*;
 
 use crate::utils::{convert_to_c_ptrs, CheckVkError};
-use crate::{Device, Instance, QueueFamilies, QueueFamily, Swapchain, SwapchainSupport};
+use crate::{
+    Device, Instance, QueueFamilies, QueueFamily, Shader, ShaderType, Swapchain, SwapchainSupport,
+};
 
 use std::ffi::{CStr, CString};
 use std::mem::{size_of, MaybeUninit};
@@ -168,6 +170,10 @@ impl Device {
 
             layout.assume_init()
         }
+    }
+
+    pub fn create_shader(&self, compiled: &[u8], sh_type: ShaderType) -> Shader {
+        Shader::from_bytes(self, compiled, sh_type)
     }
 
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
