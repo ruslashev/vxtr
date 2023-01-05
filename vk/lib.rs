@@ -7,10 +7,16 @@
 
 use glfw_sys::*;
 
+mod device;
 mod instance;
 mod utils;
 
 pub struct Instance {
     raw: VkInstance,
     surface: VkSurfaceKHR,
+}
+
+pub struct Device {
+    phys_device: VkPhysicalDevice,
+    device: VkDevice,
 }
