@@ -7,6 +7,7 @@
 
 use glfw_sys::*;
 
+mod buffer;
 mod cmd_pool;
 mod device;
 mod instance;
@@ -79,6 +80,12 @@ pub struct Semaphore {
 
 pub struct Fence {
     raw: VkFence,
+    device: VkDevice,
+}
+
+pub struct Buffer {
+    buffer: VkBuffer,
+    memory: VkDeviceMemory,
     device: VkDevice,
 }
 

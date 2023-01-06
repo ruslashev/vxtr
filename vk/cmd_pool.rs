@@ -58,6 +58,10 @@ impl CommandPool {
     pub fn create_command_buffer(&self) -> VkCommandBuffer {
         self.create_command_buffers(1)[0]
     }
+
+    pub fn as_raw(&self) -> VkCommandPool {
+        self.raw
+    }
 }
 
 impl Drop for CommandPool {

@@ -4,7 +4,7 @@ use crate::utils::{convert_to_c_ptrs, CheckVkError};
 use crate::*;
 
 use std::ffi::{CStr, CString};
-use std::mem::MaybeUninit;
+use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
 impl Device {
@@ -130,6 +130,20 @@ impl Device {
 
     pub fn create_fence(&self, signaled: bool) -> Fence {
         Fence::new(self, signaled)
+    }
+
+    pub fn create_buffer(&self, size: u64, usage: u32, properties: u32) -> Buffer {
+        Buffer::new(self, size, usage, properties)
+    }
+
+    pub fn create_buffer_with_data<T: Copy>(
+        &self,
+        command_pool: &CommandPool,
+        queue: VkQueue,
+        usage: u32,
+        data: &[T],
+    ) -> Buffer {
+        Buffer::with_data(self, command_pool, queue, usage, data)
     }
 }
 
