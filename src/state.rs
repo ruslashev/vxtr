@@ -74,7 +74,7 @@ impl State {
         let framebuffers = device.create_framebuffers(&render_pass, &image_views, &swapchain);
         let command_pool = device.create_command_pool(vk::QueueFamily::Graphics);
         let command_buffers = command_pool.create_command_buffers(MAX_FRAMES_IN_FLIGHT);
-        let (image_available, render_finished, is_rendering) = create_sync_objects(device);
+        let (image_available, render_finished, is_rendering) = create_sync_objects(&device);
 
         let vertices: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
 
@@ -357,56 +357,19 @@ impl CheckVkError for VkResult {
 }
 
 fn create_sync_objects(
-    device: VkDevice,
-) -> (
-    [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
-    [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
-    [VkFence; MAX_FRAMES_IN_FLIGHT],
-) {
-    let mut image_available = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
-    let mut render_finished = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
-    let mut is_rendering = [ptr::null_mut(); MAX_FRAMES_IN_FLIGHT];
+    device: &vk::Device,
+) -> (Vec<vk::Semaphore>, Vec<vk::Semaphore>, Vec<vk::Fence>) {
+    let mut image_available = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+    let mut render_finished = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+    let mut is_rendering = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
 
-    for i in 0..MAX_FRAMES_IN_FLIGHT {
-        image_available[i] = create_semaphore(device);
-        render_finished[i] = create_semaphore(device);
-        is_rendering[i] = create_fence(device);
+    for _ in 0..MAX_FRAMES_IN_FLIGHT {
+        image_available.push(device.create_semaphore());
+        render_finished.push(device.create_semaphore());
+        is_rendering.push(device.create_fence(true));
     }
 
     (image_available, render_finished, is_rendering)
-}
-
-fn create_semaphore(device: VkDevice) -> VkSemaphore {
-    let create_info = VkSemaphoreCreateInfo {
-        sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut semaphore = MaybeUninit::<VkSemaphore>::uninit();
-
-        vkCreateSemaphore(device, &create_info, ptr::null_mut(), semaphore.as_mut_ptr())
-            .check_err("create semaphore");
-
-        semaphore.assume_init()
-    }
-}
-
-fn create_fence(device: VkDevice) -> VkFence {
-    let create_info = VkFenceCreateInfo {
-        sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
-        flags: VK_FENCE_CREATE_SIGNALED_BIT,
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut fence = MaybeUninit::<VkFence>::uninit();
-
-        vkCreateFence(device, &create_info, ptr::null_mut(), fence.as_mut_ptr())
-            .check_err("create fence");
-
-        fence.assume_init()
-    }
 }
 
 fn create_buffer(

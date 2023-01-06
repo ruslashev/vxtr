@@ -72,6 +72,16 @@ pub struct CommandPool {
     device: VkDevice,
 }
 
+pub struct Semaphore {
+    raw: VkSemaphore,
+    device: VkDevice,
+}
+
+pub struct Fence {
+    raw: VkFence,
+    device: VkDevice,
+}
+
 pub enum QueueFamily {
     Graphics,
     Compute,

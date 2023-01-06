@@ -43,6 +43,15 @@ impl Device {
         Some(self.get_queue_for_family_idx(family_idx))
     }
 
+    fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
+        let mut queue = MaybeUninit::<VkQueue>::uninit();
+
+        unsafe {
+            vkGetDeviceQueue(self.device, family_idx, 0, queue.as_mut_ptr());
+            queue.assume_init()
+        }
+    }
+
     pub fn create_swapchain(&self, instance: &Instance, verbose: bool) -> Swapchain {
         Swapchain::from_device(self, instance, verbose)
     }
@@ -115,13 +124,12 @@ impl Device {
         CommandPool::new(self, queue_family)
     }
 
-    fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
-        let mut queue = MaybeUninit::<VkQueue>::uninit();
+    pub fn create_semaphore(&self) -> Semaphore {
+        Semaphore::new(self)
+    }
 
-        unsafe {
-            vkGetDeviceQueue(self.device, family_idx, 0, queue.as_mut_ptr());
-            queue.assume_init()
-        }
+    pub fn create_fence(&self, signaled: bool) -> Fence {
+        Fence::new(self, signaled)
     }
 }
 
@@ -129,6 +137,76 @@ impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             vkDestroyDevice(self.device, ptr::null());
+        }
+    }
+}
+
+impl Semaphore {
+    pub fn new(device: &Device) -> Self {
+        let create_info = VkSemaphoreCreateInfo {
+            sType: VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            ..Default::default()
+        };
+
+        let raw = unsafe {
+            let mut semaphore = MaybeUninit::<VkSemaphore>::uninit();
+
+            vkCreateSemaphore(
+                device.as_raw(),
+                &create_info,
+                ptr::null_mut(),
+                semaphore.as_mut_ptr(),
+            )
+            .check_err("create semaphore");
+
+            semaphore.assume_init()
+        };
+
+        Self {
+            raw,
+            device: device.as_raw(),
+        }
+    }
+}
+
+impl Drop for Semaphore {
+    fn drop(&mut self) {
+        unsafe {
+            vkDestroySemaphore(self.device, self.raw, ptr::null());
+        }
+    }
+}
+
+impl Fence {
+    pub fn new(device: &Device, signaled: bool) -> Self {
+        let flags = if signaled { VK_FENCE_CREATE_SIGNALED_BIT } else { 0 };
+
+        let create_info = VkFenceCreateInfo {
+            sType: VK_STRUCTURE_TYPE_FENCE_CREATE_INFO,
+            flags,
+            ..Default::default()
+        };
+
+        let raw = unsafe {
+            let mut fence = MaybeUninit::<VkFence>::uninit();
+
+            vkCreateFence(device.as_raw(), &create_info, ptr::null_mut(), fence.as_mut_ptr())
+                .check_err("create fence");
+
+            fence.assume_init()
+        };
+
+        Self {
+            raw,
+            device: device.as_raw(),
+        }
+    }
+}
+
+impl Drop for Fence {
+    fn drop(&mut self) {
+        unsafe {
+            vkDestroyFence(self.device, self.raw, ptr::null());
         }
     }
 }
