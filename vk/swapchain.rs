@@ -73,8 +73,8 @@ impl Swapchain {
         }
     }
 
-    pub fn get_images(&self) -> Vec<VkImage> {
-        unsafe {
+    pub fn get_image_views(&self) -> Vec<ImageView> {
+        let images = unsafe {
             let mut count = 0;
             vkGetSwapchainImagesKHR(self.device, self.raw, &mut count, ptr::null_mut());
 
@@ -84,7 +84,17 @@ impl Swapchain {
             vkGetSwapchainImagesKHR(self.device, self.raw, &mut count, images.as_mut_ptr());
 
             images
+        };
+
+        let mut image_views = Vec::with_capacity(images.len());
+
+        for image in images {
+            let image_view = ImageView::from_raw(self.device, image, self.format);
+
+            image_views.push(image_view);
         }
+
+        image_views
     }
 
     pub fn format(&self) -> VkFormat {
@@ -147,7 +157,7 @@ impl Drop for Framebuffer {
 }
 
 impl ImageView {
-    pub fn new(device: &Device, image: VkImage, image_format: VkFormat) -> Self {
+    pub fn from_raw(device: VkDevice, image: VkImage, image_format: VkFormat) -> Self {
         let create_info = VkImageViewCreateInfo {
             sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             image,
@@ -172,7 +182,7 @@ impl ImageView {
         let raw = unsafe {
             let mut view = MaybeUninit::<VkImageView>::uninit();
 
-            vkCreateImageView(device.as_raw(), &create_info, ptr::null(), view.as_mut_ptr())
+            vkCreateImageView(device, &create_info, ptr::null(), view.as_mut_ptr())
                 .check_err("create image view");
 
             view.assume_init()
@@ -180,7 +190,7 @@ impl ImageView {
 
         Self {
             raw,
-            device: device.as_raw(),
+            device,
         }
     }
 

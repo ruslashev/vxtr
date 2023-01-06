@@ -51,8 +51,7 @@ impl State {
         let gfx_queue = device.get_queue(vk::QueueFamily::Graphics).unwrap();
         let present_queue = device.get_queue(vk::QueueFamily::Present).unwrap();
         let swapchain = device.create_swapchain(&instance, true);
-        let swapchain_images = swapchain.get_images();
-        let image_views = device.create_image_views(&swapchain_images, swapchain.format());
+        let image_views = swapchain.get_image_views();
         let render_pass = device.create_render_pass(swapchain.format());
         let pipeline_layout = device.create_pipeline_layout(VK_SHADER_STAGE_FRAGMENT_BIT);
 

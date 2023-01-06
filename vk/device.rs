@@ -4,7 +4,7 @@ use crate::utils::{convert_to_c_ptrs, CheckVkError};
 use crate::*;
 
 use std::ffi::{CStr, CString};
-use std::mem::{size_of, MaybeUninit};
+use std::mem::MaybeUninit;
 use std::ptr;
 
 impl Device {
@@ -54,24 +54,6 @@ impl Device {
 
     pub fn create_swapchain(&self, instance: &Instance, verbose: bool) -> Swapchain {
         Swapchain::from_device(self, instance, verbose)
-    }
-
-    fn create_image_view(&self, image: VkImage, image_format: VkFormat) -> ImageView {
-        ImageView::new(self, image, image_format)
-    }
-
-    pub fn create_image_views(
-        &self,
-        swapchain_images: &[VkImage],
-        image_format: VkFormat,
-    ) -> Vec<ImageView> {
-        let mut image_views = Vec::with_capacity(swapchain_images.len());
-
-        for image in swapchain_images {
-            image_views.push(self.create_image_view(*image, image_format));
-        }
-
-        image_views
     }
 
     pub fn create_render_pass(&self, image_format: VkFormat) -> RenderPass {
