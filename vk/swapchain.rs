@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
 use crate::utils::CheckVkError;
-use crate::{Device, Instance, Swapchain, Framebuffer, RenderPass};
+use crate::{Device, Framebuffer, ImageView, Instance, RenderPass, Swapchain};
 
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -104,14 +104,14 @@ impl Framebuffer {
     pub fn new(
         device: &Device,
         render_pass: &RenderPass,
-        image_view: &VkImageView,
+        image_view: &ImageView,
         swapchain: &Swapchain,
     ) -> Self {
         let create_info = VkFramebufferCreateInfo {
             sType: VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
             renderPass: render_pass.as_raw(),
             attachmentCount: 1,
-            pAttachments: image_view,
+            pAttachments: &image_view.as_raw(),
             width: swapchain.extent.width,
             height: swapchain.extent.height,
             layers: 1,
@@ -142,6 +142,57 @@ impl Drop for Framebuffer {
     fn drop(&mut self) {
         unsafe {
             vkDestroyFramebuffer(self.device, self.raw, ptr::null());
+        }
+    }
+}
+
+impl ImageView {
+    pub fn new(device: &Device, image: VkImage, image_format: VkFormat) -> Self {
+        let create_info = VkImageViewCreateInfo {
+            sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            image,
+            viewType: VK_IMAGE_VIEW_TYPE_2D,
+            format: image_format,
+            components: VkComponentMapping {
+                r: VK_COMPONENT_SWIZZLE_IDENTITY,
+                g: VK_COMPONENT_SWIZZLE_IDENTITY,
+                b: VK_COMPONENT_SWIZZLE_IDENTITY,
+                a: VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
+            subresourceRange: VkImageSubresourceRange {
+                aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,
+                baseMipLevel: 0,
+                levelCount: 1,
+                baseArrayLayer: 0,
+                layerCount: 1,
+            },
+            ..Default::default()
+        };
+
+        let raw = unsafe {
+            let mut view = MaybeUninit::<VkImageView>::uninit();
+
+            vkCreateImageView(device.as_raw(), &create_info, ptr::null(), view.as_mut_ptr())
+                .check_err("create image view");
+
+            view.assume_init()
+        };
+
+        Self {
+            raw,
+            device: device.as_raw(),
+        }
+    }
+
+    pub fn as_raw(&self) -> VkImageView {
+        self.raw
+    }
+}
+
+impl Drop for ImageView {
+    fn drop(&mut self) {
+        unsafe {
+            vkDestroyImageView(self.device, self.raw, ptr::null());
         }
     }
 }

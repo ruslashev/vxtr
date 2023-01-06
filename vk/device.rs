@@ -43,43 +43,19 @@ impl Device {
         Swapchain::from_device(self, instance, verbose)
     }
 
+    fn create_image_view(&self, image: VkImage, image_format: VkFormat) -> ImageView {
+        ImageView::new(self, image, image_format)
+    }
+
     pub fn create_image_views(
         &self,
         swapchain_images: &[VkImage],
         image_format: VkFormat,
-    ) -> Vec<VkImageView> {
+    ) -> Vec<ImageView> {
         let mut image_views = Vec::with_capacity(swapchain_images.len());
 
-        for img in swapchain_images {
-            let create_info = VkImageViewCreateInfo {
-                sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                image: *img,
-                viewType: VK_IMAGE_VIEW_TYPE_2D,
-                format: image_format,
-                components: VkComponentMapping {
-                    r: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    g: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    b: VK_COMPONENT_SWIZZLE_IDENTITY,
-                    a: VK_COMPONENT_SWIZZLE_IDENTITY,
-                },
-                subresourceRange: VkImageSubresourceRange {
-                    aspectMask: VK_IMAGE_ASPECT_COLOR_BIT,
-                    baseMipLevel: 0,
-                    levelCount: 1,
-                    baseArrayLayer: 0,
-                    layerCount: 1,
-                },
-                ..Default::default()
-            };
-
-            let image_view = unsafe {
-                let mut view = MaybeUninit::<VkImageView>::uninit();
-                vkCreateImageView(self.device, &create_info, ptr::null(), view.as_mut_ptr())
-                    .check_err("create image view");
-                view.assume_init()
-            };
-
-            image_views.push(image_view);
+        for image in swapchain_images {
+            image_views.push(self.create_image_view(*image, image_format));
         }
 
         image_views
@@ -97,15 +73,6 @@ impl Device {
         Shader::from_bytes(self, compiled, sh_type)
     }
 
-    pub fn create_framebuffer(
-        &self,
-        render_pass: &RenderPass,
-        image_view: &VkImageView,
-        swapchain: &Swapchain,
-    ) -> Framebuffer {
-        Framebuffer::new(self, render_pass, image_view, swapchain)
-    }
-
     pub fn create_pipeline(
         &self,
         shaders: &[Shader],
@@ -116,10 +83,19 @@ impl Device {
         Pipeline::new(self, shaders, swapchain, render_pass, pipeline_layout)
     }
 
+    fn create_framebuffer(
+        &self,
+        render_pass: &RenderPass,
+        image_view: &ImageView,
+        swapchain: &Swapchain,
+    ) -> Framebuffer {
+        Framebuffer::new(self, render_pass, image_view, swapchain)
+    }
+
     pub fn create_framebuffers(
         &self,
         render_pass: &RenderPass,
-        image_views: &[VkImageView],
+        image_views: &[ImageView],
         swapchain: &Swapchain,
     ) -> Vec<Framebuffer> {
         let mut framebuffers = Vec::with_capacity(image_views.len());

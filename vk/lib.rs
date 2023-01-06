@@ -61,6 +61,11 @@ pub struct Framebuffer {
     device: VkDevice,
 }
 
+pub struct ImageView {
+    raw: VkImageView,
+    device: VkDevice,
+}
+
 pub enum QueueFamily {
     Graphics,
     Compute,
