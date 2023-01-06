@@ -8,7 +8,6 @@
 use glfw_sys::*;
 
 mod device;
-mod framebuffer;
 mod instance;
 mod pipeline;
 mod render_pass;
