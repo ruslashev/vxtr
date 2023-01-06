@@ -7,6 +7,7 @@
 
 use glfw_sys::*;
 
+mod cmd_pool;
 mod device;
 mod instance;
 mod pipeline;
@@ -63,6 +64,11 @@ pub struct Framebuffer {
 
 pub struct ImageView {
     raw: VkImageView,
+    device: VkDevice,
+}
+
+pub struct CommandPool {
+    raw: VkCommandPool,
     device: VkDevice,
 }
 

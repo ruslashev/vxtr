@@ -26,15 +26,19 @@ impl Device {
         self.device
     }
 
+    pub fn get_idx_of_queue_family(&self, queue_family: QueueFamily) -> Option<u32> {
+        match queue_family {
+            QueueFamily::Graphics => self.queue_families.graphics,
+            QueueFamily::Compute => self.queue_families.compute,
+            QueueFamily::Transfer => self.queue_families.transfer,
+            QueueFamily::SparseBinding => self.queue_families.sparse_binding,
+            QueueFamily::Protected => self.queue_families.protected,
+            QueueFamily::Present => self.queue_families.present,
+        }
+    }
+
     pub fn get_queue(&self, queue_family: QueueFamily) -> Option<VkQueue> {
-        let family_idx = match queue_family {
-            QueueFamily::Graphics => self.queue_families.graphics?,
-            QueueFamily::Compute => self.queue_families.compute?,
-            QueueFamily::Transfer => self.queue_families.transfer?,
-            QueueFamily::SparseBinding => self.queue_families.sparse_binding?,
-            QueueFamily::Protected => self.queue_families.protected?,
-            QueueFamily::Present => self.queue_families.present?,
-        };
+        let family_idx = self.get_idx_of_queue_family(queue_family)?;
 
         Some(self.get_queue_for_family_idx(family_idx))
     }
@@ -105,6 +109,10 @@ impl Device {
         }
 
         framebuffers
+    }
+
+    pub fn create_command_pool(&self, queue_family: QueueFamily) -> CommandPool {
+        CommandPool::new(self, queue_family)
     }
 
     fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {

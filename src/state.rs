@@ -72,8 +72,8 @@ impl State {
         );
 
         let framebuffers = device.create_framebuffers(&render_pass, &image_views, &swapchain);
-        let command_pool = create_command_pool(device, queue_families.graphics.unwrap());
-        let command_buffers = create_command_buffers(device, command_pool, MAX_FRAMES_IN_FLIGHT);
+        let command_pool = device.create_command_pool(vk::QueueFamily::Graphics);
+        let command_buffers = command_pool.create_command_buffers(MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(device);
 
         let vertices: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
@@ -339,8 +339,6 @@ impl Drop for State {
                 vkDestroyFence(self.device, *fence, ptr::null());
             }
 
-            vkDestroyCommandPool(self.device, self.command_pool, ptr::null());
-
             self.cleanup_swapchain();
 
             vkDestroyBuffer(self.device, self.vertex_buffer, ptr::null());
@@ -356,48 +354,6 @@ impl CheckVkError for VkResult {
     fn check_err(self, action: &'static str) {
         assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
     }
-}
-
-fn create_command_pool(device: VkDevice, graphics_queue_family: u32) -> VkCommandPool {
-    let create_info = VkCommandPoolCreateInfo {
-        sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-        queueFamilyIndex: graphics_queue_family,
-        ..Default::default()
-    };
-
-    unsafe {
-        let mut command_pool = MaybeUninit::<VkCommandPool>::uninit();
-
-        vkCreateCommandPool(device, &create_info, ptr::null(), command_pool.as_mut_ptr())
-            .check_err("create command pool");
-
-        command_pool.assume_init()
-    }
-}
-
-fn create_command_buffers(
-    device: VkDevice,
-    command_pool: VkCommandPool,
-    count: usize,
-) -> Vec<VkCommandBuffer> {
-    let mut command_buffers = Vec::with_capacity(count);
-    command_buffers.resize(count, ptr::null_mut());
-
-    let alloc_info = VkCommandBufferAllocateInfo {
-        sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        commandPool: command_pool,
-        level: VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        commandBufferCount: count.try_into().unwrap(),
-        ..Default::default()
-    };
-
-    unsafe {
-        vkAllocateCommandBuffers(device, &alloc_info, command_buffers.as_mut_ptr())
-            .check_err("allocate command buffer");
-    }
-
-    command_buffers
 }
 
 fn create_sync_objects(
@@ -611,7 +567,7 @@ fn copy_buffers(
     dst: VkBuffer,
     size: u64,
 ) {
-    let cmd_buffer = create_command_buffers(device, command_pool, 1)[0];
+    let cmd_buffer = command_pool.create_command_buffer();
 
     let begin_info = VkCommandBufferBeginInfo {
         sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
