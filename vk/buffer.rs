@@ -128,37 +128,17 @@ impl Buffer {
         src: &Buffer,
         size: u64,
     ) {
-        let cmd_buffer = command_pool.create_command_buffer();
+        let mut cmd_buffer = command_pool.create_command_buffer();
 
-        let begin_info = VkCommandBufferBeginInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            flags: VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            ..Default::default()
-        };
+        cmd_buffer.record_with_flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, |handle| {
+            handle.copy_buffer_full(&src, self, size);
+        });
 
-        let copy_region = VkBufferCopy {
-            size,
-            ..Default::default()
-        };
-
-        let submit_info = VkSubmitInfo {
-            sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            commandBufferCount: 1,
-            pCommandBuffers: &cmd_buffer,
-            ..Default::default()
-        };
+        let submit_info = cmd_buffer.to_submit_info();
 
         unsafe {
-            vkBeginCommandBuffer(cmd_buffer, &begin_info);
-
-            vkCmdCopyBuffer(cmd_buffer, src.buffer, self.buffer, 1, &copy_region);
-
-            vkEndCommandBuffer(cmd_buffer);
-
             vkQueueSubmit(queue, 1, &submit_info, ptr::null_mut());
             vkQueueWaitIdle(queue);
-
-            vkFreeCommandBuffers(self.device, command_pool.as_raw(), 1, &cmd_buffer);
         }
     }
 }

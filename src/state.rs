@@ -1,7 +1,5 @@
 use glfw_sys::*;
 
-use std::ffi::c_void;
-use std::mem::size_of;
 use std::ptr;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -23,7 +21,7 @@ pub struct State {
     pipeline: vk::Pipeline,
     framebuffers: Vec<vk::Framebuffer>,
     command_pool: vk::CommandPool,
-    command_buffers: Vec<VkCommandBuffer>,
+    command_buffers: Vec<vk::CommandBuffer>,
     image_available: Vec<vk::Semaphore>,
     render_finished: Vec<vk::Semaphore>,
     is_rendering: Vec<vk::Fence>,
@@ -145,7 +143,10 @@ impl State {
             image_index
         };
 
-        self.record_commands_to_buffer(command_buffer, self.framebuffers[image_index as usize]);
+        self.record_commands_to_buffer(
+            &mut command_buffer,
+            &self.framebuffers[image_index as usize],
+        );
 
         let wait_semaphores = [image_available];
         let wait_stages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
@@ -187,30 +188,12 @@ impl State {
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    fn record_commands_to_buffer(&self, cmd_buffer: VkCommandBuffer, framebuffer: vk::Framebuffer) {
-        let begin_info = VkCommandBufferBeginInfo {
-            sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            ..Default::default()
-        };
-
-        let clear_color = VkClearValue {
-            color: VkClearColorValue {
-                float32: [0.0, 0.0, 0.0, 1.0],
-            },
-        };
-
-        let render_pass_info = VkRenderPassBeginInfo {
-            sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            renderPass: self.render_pass.as_raw(),
-            framebuffer: framebuffer.as_raw(),
-            renderArea: VkRect2D {
-                offset: VkOffset2D { x: 0, y: 0 },
-                extent: self.swapchain.extent(),
-            },
-            clearValueCount: 1,
-            pClearValues: &clear_color,
-            ..Default::default()
-        };
+    fn record_commands_to_buffer(
+        &self,
+        cmd_buffer: &mut vk::CommandBuffer,
+        framebuffer: &vk::Framebuffer,
+    ) {
+        let clear_color = [0.0, 0.0, 0.0, 1.0];
 
         let vertex_buffers = [self.vertex_buffer];
         let offsets = [0];
@@ -224,38 +207,29 @@ impl State {
             res_x: vk::utils::u32_to_f32_nowarn(self.swapchain.extent().width),
             res_y: vk::utils::u32_to_f32_nowarn(self.swapchain.extent().height),
         };
-        let push_constants_ptr = ptr::addr_of!(push_constants).cast::<c_void>();
-        let push_constants_size = size_of::<PushConstants>().try_into().unwrap();
 
-        unsafe {
-            vkResetCommandBuffer(cmd_buffer, 0);
+        cmd_buffer.reset();
 
-            vkBeginCommandBuffer(cmd_buffer, &begin_info)
-                .check_err("begin recording to command buffer");
+        cmd_buffer.record(|handle| {
+            handle.begin_render_pass(clear_color, &self.render_pass, framebuffer, &self.swapchain);
 
-            vkCmdBeginRenderPass(cmd_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
+            handle.bind_pipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, &self.pipeline);
 
-            vkCmdBindPipeline(cmd_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, self.pipeline);
+            handle.bind_vertex_buffers(&vertex_buffers, &offsets);
 
-            vkCmdBindVertexBuffers(cmd_buffer, 0, 1, vertex_buffers.as_ptr(), offsets.as_ptr());
+            handle.bind_index_buffer(&self.index_buffer, 0, VK_INDEX_TYPE_UINT16);
 
-            vkCmdBindIndexBuffer(cmd_buffer, self.index_buffer, 0, VK_INDEX_TYPE_UINT16);
-
-            vkCmdPushConstants(
-                cmd_buffer,
-                self.pipeline_layout,
+            handle.push_constants(
+                &self.pipeline_layout,
                 VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
-                push_constants_size,
-                push_constants_ptr,
+                push_constants,
             );
 
-            vkCmdDrawIndexed(cmd_buffer, self.index_count, 1, 0, 0, 0);
+            handle.draw_indexed(self.index_count);
 
-            vkCmdEndRenderPass(cmd_buffer);
-
-            vkEndCommandBuffer(cmd_buffer).check_err("end command buffer recording");
-        }
+            handle.end_render_pass();
+        });
     }
 
     fn recreate_swapchain(&mut self) {

@@ -74,6 +74,17 @@ pub struct CommandPool {
     device: VkDevice,
 }
 
+#[derive(Clone)]
+pub struct CommandBuffer {
+    raw: VkCommandBuffer,
+    device: VkDevice,
+    cmd_pool: VkCommandPool,
+}
+
+pub struct CommandBufferRecording {
+    cmd_buf: VkCommandBuffer,
+}
+
 pub struct Semaphore {
     raw: VkSemaphore,
     device: VkDevice,
