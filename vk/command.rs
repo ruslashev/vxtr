@@ -144,6 +144,10 @@ impl CommandBuffer {
             ..Default::default()
         }
     }
+
+    pub fn as_raw(&self) -> VkCommandBuffer {
+        self.raw
+    }
 }
 
 impl Drop for CommandBuffer {
@@ -225,7 +229,7 @@ impl CommandBufferRecording {
         }
     }
 
-    pub fn bind_vertex_buffers(&self, buffers: &[Buffer], offsets: &[u64]) {
+    pub fn bind_vertex_buffers(&self, buffers: &[&Buffer], offsets: &[u64]) {
         let raw: Vec<VkBuffer> = buffers.iter().map(|buf| buf.buffer).collect();
 
         unsafe {

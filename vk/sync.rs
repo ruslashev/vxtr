@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
 use crate::utils::CheckVkError;
-use crate::{Device, Semaphore, Fence};
+use crate::{Device, Fence, Semaphore};
 
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -31,6 +31,10 @@ impl Semaphore {
             raw,
             device: device.as_raw(),
         }
+    }
+
+    pub fn as_raw(&self) -> VkSemaphore {
+        self.raw
     }
 }
 
@@ -77,6 +81,10 @@ impl Fence {
         unsafe {
             vkResetFences(self.device, 1, &self.raw);
         }
+    }
+
+    pub fn as_raw(&self) -> VkFence {
+        self.raw
     }
 }
 

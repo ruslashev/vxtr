@@ -127,6 +127,12 @@ impl Device {
     ) -> Buffer {
         Buffer::with_data(self, command_pool, queue, usage, data)
     }
+
+    pub fn wait_idle(&self) {
+        unsafe {
+            vkDeviceWaitIdle(self.device);
+        }
+    }
 }
 
 impl Drop for Device {
@@ -351,23 +357,25 @@ fn get_queue_families(phys_device: VkPhysicalDevice, surface: VkSurfaceKHR) -> Q
 fn print_queue_families(family_properties: &[VkQueueFamilyProperties]) {
     println!("Queue families:");
 
-    for f in family_properties {
+    for (i, f) in family_properties.iter().enumerate() {
+        println!("{}:", i);
+
         print!("\tFlags: ");
 
         if f.queueFlags & VK_QUEUE_GRAPHICS_BIT != 0 {
             print!("graphics ");
         }
         if f.queueFlags & VK_QUEUE_COMPUTE_BIT != 0 {
-            print!("compute");
+            print!("compute ");
         }
         if f.queueFlags & VK_QUEUE_TRANSFER_BIT != 0 {
-            print!("transfer");
+            print!("transfer ");
         }
         if f.queueFlags & VK_QUEUE_SPARSE_BINDING_BIT != 0 {
-            print!("sparse_binding");
+            print!("sparse_binding ");
         }
         if f.queueFlags & VK_QUEUE_PROTECTED_BIT != 0 {
-            print!("protected");
+            print!("protected ");
         }
 
         println!();

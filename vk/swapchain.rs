@@ -117,6 +117,10 @@ impl Swapchain {
     pub fn format(&self) -> VkFormat {
         self.format
     }
+
+    pub fn as_raw(&self) -> VkSwapchainKHR {
+        self.raw
+    }
 }
 
 impl Drop for Swapchain {
