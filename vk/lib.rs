@@ -8,13 +8,14 @@
 use glfw_sys::*;
 
 mod buffer;
-mod cmd_pool;
+mod command;
 mod device;
 mod instance;
 mod pipeline;
 mod render_pass;
 mod shader;
 mod swapchain;
+mod sync;
 
 pub mod utils;
 
