@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
 use std::ffi::c_void;
-use std::mem::{size_of, MaybeUninit};
+use std::mem::size_of;
 use std::ptr;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -17,22 +17,19 @@ pub struct State {
     gfx_queue: VkQueue,
     present_queue: VkQueue,
     swapchain: vk::Swapchain,
-    extent: VkExtent2D,
-    image_views: Vec<VkImageView>,
+    image_views: Vec<vk::ImageView>,
     render_pass: vk::RenderPass,
-    pipeline_layout: VkPipelineLayout,
-    pipeline: VkPipeline,
-    framebuffers: Vec<VkFramebuffer>,
-    vertex_buffer: VkBuffer,
-    vertex_buffer_memory: VkDeviceMemory,
-    index_buffer: VkBuffer,
-    index_buffer_memory: VkDeviceMemory,
-    index_count: u32,
-    command_pool: VkCommandPool,
+    pipeline_layout: vk::PipelineLayout,
+    pipeline: vk::Pipeline,
+    framebuffers: Vec<vk::Framebuffer>,
+    command_pool: vk::CommandPool,
     command_buffers: Vec<VkCommandBuffer>,
-    image_available: [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
-    render_finished: [VkSemaphore; MAX_FRAMES_IN_FLIGHT],
-    is_rendering: [VkFence; MAX_FRAMES_IN_FLIGHT],
+    image_available: Vec<vk::Semaphore>,
+    render_finished: Vec<vk::Semaphore>,
+    is_rendering: Vec<vk::Fence>,
+    vertex_buffer: vk::Buffer,
+    index_buffer: vk::Buffer,
+    index_count: u32,
     current_frame: usize,
     current_time: f64,
 }
@@ -53,7 +50,8 @@ impl State {
         let swapchain = device.create_swapchain(&instance, true);
         let image_views = swapchain.get_image_views();
         let render_pass = device.create_render_pass(swapchain.format());
-        let pipeline_layout = device.create_pipeline_layout(VK_SHADER_STAGE_FRAGMENT_BIT);
+        let pipeline_layout =
+            device.create_pipeline_layout::<PushConstants>(VK_SHADER_STAGE_FRAGMENT_BIT);
 
         let vert_compiled = include_bytes!("../build/shader.vert.spv");
         let frag_compiled = include_bytes!("../build/shader.frag.spv");
@@ -77,10 +75,8 @@ impl State {
 
         let vertices: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
 
-        let (vertex_buffer, vertex_buffer_memory) = create_buffer_of_type(
-            phys_device,
-            device,
-            command_pool,
+        let vertex_buffer = device.create_buffer_with_data(
+            &command_pool,
             gfx_queue,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             &vertices,
@@ -88,10 +84,8 @@ impl State {
 
         let indices: [u16; 6] = [0, 1, 2, 2, 3, 0];
 
-        let (index_buffer, index_buffer_memory) = create_buffer_of_type(
-            phys_device,
-            device,
-            command_pool,
+        let index_buffer = device.create_buffer_with_data(
+            &command_pool,
             gfx_queue,
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             &indices,
@@ -104,16 +98,13 @@ impl State {
             gfx_queue,
             present_queue,
             swapchain,
-            extent,
             image_views,
             render_pass,
             pipeline_layout,
             pipeline,
             framebuffers,
             vertex_buffer,
-            vertex_buffer_memory,
             index_buffer,
-            index_buffer_memory,
             index_count: indices.len().try_into().unwrap(),
             command_pool,
             command_buffers,
@@ -134,18 +125,11 @@ impl State {
         let is_rendering = self.is_rendering[self.current_frame];
 
         let image_index = unsafe {
-            vkWaitForFences(self.device, 1, &is_rendering, 1, timeout);
+            is_rendering.wait();
 
             let mut image_index = 0;
 
-            let result = vkAcquireNextImageKHR(
-                self.device,
-                self.swapchain,
-                timeout,
-                image_available,
-                ptr::null_mut(),
-                &mut image_index,
-            );
+            let result = self.swapchain.acquire_next_image(&mut image_available, &mut image_index);
 
             if result == VK_ERROR_OUT_OF_DATE_KHR {
                 self.recreate_swapchain();
@@ -156,7 +140,7 @@ impl State {
                 result.check_err("acquire next image");
             }
 
-            vkResetFences(self.device, 1, &is_rendering);
+            is_rendering.reset();
 
             image_index
         };
@@ -203,7 +187,7 @@ impl State {
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }
 
-    fn record_commands_to_buffer(&self, cmd_buffer: VkCommandBuffer, framebuffer: VkFramebuffer) {
+    fn record_commands_to_buffer(&self, cmd_buffer: VkCommandBuffer, framebuffer: vk::Framebuffer) {
         let begin_info = VkCommandBufferBeginInfo {
             sType: VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             ..Default::default()
@@ -217,11 +201,11 @@ impl State {
 
         let render_pass_info = VkRenderPassBeginInfo {
             sType: VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            renderPass: self.render_pass,
-            framebuffer,
+            renderPass: self.render_pass.as_raw(),
+            framebuffer: framebuffer.as_raw(),
             renderArea: VkRect2D {
                 offset: VkOffset2D { x: 0, y: 0 },
-                extent: self.extent,
+                extent: self.swapchain.extent(),
             },
             clearValueCount: 1,
             pClearValues: &clear_color,
@@ -237,8 +221,8 @@ impl State {
 
         let push_constants = PushConstants {
             time: time_trunc,
-            res_x: u32_to_f32_nowarn(self.extent.width),
-            res_y: u32_to_f32_nowarn(self.extent.height),
+            res_x: vk::utils::u32_to_f32_nowarn(self.swapchain.extent().width),
+            res_y: vk::utils::u32_to_f32_nowarn(self.swapchain.extent().height),
         };
         let push_constants_ptr = ptr::addr_of!(push_constants).cast::<c_void>();
         let push_constants_size = size_of::<PushConstants>().try_into().unwrap();

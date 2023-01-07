@@ -15,7 +15,8 @@ mod pipeline;
 mod render_pass;
 mod shader;
 mod swapchain;
-mod utils;
+
+pub mod utils;
 
 pub struct Instance {
     raw: VkInstance,

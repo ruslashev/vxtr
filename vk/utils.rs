@@ -14,3 +14,9 @@ impl CheckVkError for VkResult {
 pub(crate) fn convert_to_c_ptrs(cstrings: &[CString]) -> Vec<*const c_char> {
     cstrings.iter().map(|cstring| cstring.as_c_str().as_ptr()).collect()
 }
+
+#[allow(clippy::cast_precision_loss)]
+pub fn u32_to_f32_nowarn(x: u32) -> f32 {
+    let mantissa = x & 0x007f_ffff; // 23 set bits
+    mantissa as f32
+}

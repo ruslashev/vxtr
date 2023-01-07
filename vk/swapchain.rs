@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
 use crate::utils::CheckVkError;
-use crate::{Device, Framebuffer, ImageView, Instance, RenderPass, Swapchain};
+use crate::{Device, Framebuffer, ImageView, Instance, RenderPass, Semaphore, Swapchain};
 
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -97,6 +97,23 @@ impl Swapchain {
         image_views
     }
 
+    pub fn acquire_next_image(&self, semaphore: &mut Semaphore, image_index: &mut u32) -> i32 {
+        unsafe {
+            vkAcquireNextImageKHR(
+                self.device,
+                self.raw,
+                u64::MAX,
+                semaphore.raw,
+                ptr::null_mut(),
+                image_index,
+            )
+        }
+    }
+
+    pub fn extent(&self) -> VkExtent2D {
+        self.extent
+    }
+
     pub fn format(&self) -> VkFormat {
         self.format
     }
@@ -188,10 +205,7 @@ impl ImageView {
             view.assume_init()
         };
 
-        Self {
-            raw,
-            device,
-        }
+        Self { raw, device }
     }
 
     pub fn as_raw(&self) -> VkImageView {

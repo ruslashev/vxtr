@@ -197,6 +197,18 @@ impl Fence {
             device: device.as_raw(),
         }
     }
+
+    pub fn wait(&self) {
+        unsafe {
+            vkWaitForFences(self.device, 1, &self.raw, 1, u64::MAX);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        unsafe {
+            vkResetFences(self.device, 1, &self.raw);
+        }
+    }
 }
 
 impl Drop for Fence {

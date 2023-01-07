@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use crate::utils::CheckVkError;
+use crate::utils::{u32_to_f32_nowarn, CheckVkError};
 use crate::{Device, Pipeline, PipelineLayout, RenderPass, Shader, Swapchain};
 
 use std::mem::{size_of, MaybeUninit};
@@ -181,12 +181,6 @@ fn create_pipeline_viewport(extent: VkExtent2D) -> VkViewport {
         minDepth: 0.0,
         maxDepth: 1.0,
     }
-}
-
-#[allow(clippy::cast_precision_loss)]
-fn u32_to_f32_nowarn(x: u32) -> f32 {
-    let mantissa = x & 0x007f_ffff; // 23 set bits
-    mantissa as f32
 }
 
 fn create_pipeline_scissor(extent: VkExtent2D) -> VkRect2D {
