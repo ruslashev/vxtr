@@ -97,8 +97,9 @@ impl Swapchain {
         image_views
     }
 
-    pub fn acquire_next_image(&self, semaphore: &mut Semaphore, image_index: &mut u32) -> i32 {
-        unsafe {
+    /// Returns whether need to recreate swapchain
+    pub fn acquire_next_image(&self, semaphore: &mut Semaphore, image_index: &mut u32) -> bool {
+        let result = unsafe {
             vkAcquireNextImageKHR(
                 self.device,
                 self.raw,
@@ -107,7 +108,19 @@ impl Swapchain {
                 ptr::null_mut(),
                 image_index,
             )
+        };
+
+        if result == VK_ERROR_OUT_OF_DATE_KHR {
+            return true;
         }
+
+        if result == VK_SUBOPTIMAL_KHR {
+            return false;
+        }
+
+        result.check_err("acquire next image");
+
+        false
     }
 
     pub fn extent(&self) -> VkExtent2D {

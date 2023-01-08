@@ -2,10 +2,6 @@ use glfw_sys::*;
 
 const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
-trait CheckVkError {
-    fn check_err(self, action: &'static str);
-}
-
 pub struct State {
     gfx_queue: vk::Queue,
     present_queue: vk::Queue,
@@ -67,7 +63,16 @@ impl State {
         let command_pool = device.create_command_pool(vk::QueueFamily::Graphics);
         // must ensure that these can't outlive command_pool
         let command_buffers = command_pool.create_command_buffers(MAX_FRAMES_IN_FLIGHT);
-        let (image_available, render_finished, is_rendering) = create_sync_objects(&device);
+
+        let mut image_available = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        let mut render_finished = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        let mut is_rendering = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            image_available.push(device.create_semaphore());
+            render_finished.push(device.create_semaphore());
+            is_rendering.push(device.create_fence(true));
+        }
 
         let vertices: [f32; 8] = [-1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0];
 
@@ -117,18 +122,12 @@ impl State {
 
             let mut image_index = 0;
 
-            let result = self.swapchain.acquire_next_image(
-                &mut self.image_available[self.current_frame],
-                &mut image_index,
-            );
-
-            if result == VK_ERROR_OUT_OF_DATE_KHR {
+            if self
+                .swapchain
+                .acquire_next_image(&mut self.image_available[self.current_frame], &mut image_index)
+            {
                 self.recreate_swapchain();
                 return;
-            }
-
-            if result != VK_SUBOPTIMAL_KHR {
-                result.check_err("acquire next image");
             }
 
             self.is_rendering[self.current_frame].reset();
@@ -225,26 +224,4 @@ impl Drop for State {
     fn drop(&mut self) {
         self.device.wait_idle();
     }
-}
-
-impl CheckVkError for VkResult {
-    fn check_err(self, action: &'static str) {
-        assert!(self == VK_SUCCESS, "Failed to {}: err = {}", action, self);
-    }
-}
-
-fn create_sync_objects(
-    device: &vk::Device,
-) -> (Vec<vk::Semaphore>, Vec<vk::Semaphore>, Vec<vk::Fence>) {
-    let mut image_available = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-    let mut render_finished = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-    let mut is_rendering = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-
-    for _ in 0..MAX_FRAMES_IN_FLIGHT {
-        image_available.push(device.create_semaphore());
-        render_finished.push(device.create_semaphore());
-        is_rendering.push(device.create_fence(true));
-    }
-
-    (image_available, render_finished, is_rendering)
 }
