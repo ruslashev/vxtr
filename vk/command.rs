@@ -234,9 +234,9 @@ impl CommandBufferRecording {
         pipeline_layout: &PipelineLayout,
         shader_stages: u32,
         offset: u32,
-        push_constants: T,
+        push_constants: &T,
     ) {
-        let ptr = ptr::addr_of!(push_constants).cast::<c_void>();
+        let ptr = (push_constants as *const T).cast::<c_void>();
         let size = size_of::<T>().try_into().unwrap();
 
         unsafe {

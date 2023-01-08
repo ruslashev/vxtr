@@ -530,6 +530,7 @@ fn create_logical_device(
     }
 }
 
+#[allow(clippy::trivially_copy_pass_by_ref)]
 fn get_queue_create_infos(
     families: &QueueFamilies,
     priority: &f32,

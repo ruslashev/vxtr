@@ -131,7 +131,7 @@ impl Buffer {
         let mut cmd_buffer = command_pool.create_command_buffer();
 
         cmd_buffer.record_with_flags(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, |handle| {
-            handle.copy_buffer_full(&src, self, size);
+            handle.copy_buffer_full(src, self, size);
         });
 
         queue.submit(&cmd_buffer);

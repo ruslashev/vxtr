@@ -2,7 +2,8 @@
     clippy::similar_names,
     clippy::wildcard_imports,
     clippy::must_use_candidate,
-    clippy::uninlined_format_args
+    clippy::uninlined_format_args,
+    clippy::missing_panics_doc
 )]
 
 use glfw_sys::*;
@@ -107,6 +108,7 @@ pub struct Buffer {
     device: VkDevice,
 }
 
+#[derive(Clone, Copy)]
 pub enum QueueFamily {
     Graphics,
     Compute,

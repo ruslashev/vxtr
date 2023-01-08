@@ -190,7 +190,7 @@ impl State {
                 &self.pipeline_layout,
                 VK_SHADER_STAGE_FRAGMENT_BIT,
                 0,
-                push_constants,
+                &push_constants,
             );
 
             handle.draw_indexed(self.index_count);

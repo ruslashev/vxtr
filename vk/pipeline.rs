@@ -63,7 +63,7 @@ impl Pipeline {
         pipeline_layout: &PipelineLayout,
     ) -> Self {
         let shader_stage_infos: Vec<VkPipelineShaderStageCreateInfo> =
-            shaders.iter().map(|shader| shader.stage_info()).collect();
+            shaders.iter().map(Shader::stage_info).collect();
 
         let binding_desc = get_binding_description();
         let attr_desc = get_attribute_description();

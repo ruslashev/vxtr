@@ -178,7 +178,7 @@ impl Drop for Framebuffer {
 }
 
 impl ImageView {
-    pub fn from_raw(device: VkDevice, image: VkImage, image_format: VkFormat) -> Self {
+    fn from_raw(device: VkDevice, image: VkImage, image_format: VkFormat) -> Self {
         let create_info = VkImageViewCreateInfo {
             sType: VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             image,
