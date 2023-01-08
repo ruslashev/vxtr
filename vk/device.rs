@@ -1,6 +1,6 @@
 use glfw_sys::*;
 
-use crate::utils::{convert_to_c_ptrs, CheckVkError};
+use crate::utils::{convert_to_c_ptrs, get_validation_layers, CheckVkError};
 use crate::*;
 
 use std::ffi::{CStr, CString};
@@ -555,55 +555,6 @@ fn get_queue_create_infos(
     }
 
     queue_create_infos
-}
-
-fn get_validation_layers(verbose: bool) -> Vec<CString> {
-    let supported_layers = unsafe {
-        let mut count = 0;
-        vkEnumerateInstanceLayerProperties(&mut count, ptr::null_mut());
-
-        let mut layers = Vec::with_capacity(count as usize);
-        layers.resize(count as usize, VkLayerProperties::default());
-
-        vkEnumerateInstanceLayerProperties(&mut count, layers.as_mut_ptr());
-
-        layers
-    };
-
-    if verbose {
-        print_validation_layers(&supported_layers);
-    }
-
-    let required_names = vec!["VK_LAYER_KHRONOS_validation"];
-
-    // Ensure all required validation layers are supported
-    for req_name in &required_names {
-        let mut supported = false;
-
-        for supp_layer in &supported_layers {
-            let cstr = unsafe { CStr::from_ptr(supp_layer.layerName.as_ptr()) };
-            let name = cstr.to_str().expect("invalid layer name");
-
-            if req_name == &name {
-                supported = true;
-                break;
-            }
-        }
-
-        assert!(supported, "Required validation layer not found: {:?}", req_name);
-    }
-
-    required_names.into_iter().map(|name| CString::new(name).unwrap()).collect()
-}
-
-fn print_validation_layers(layers: &[VkLayerProperties]) {
-    println!("Validation layers:");
-
-    for layer in layers {
-        let cstr = unsafe { CStr::from_ptr(layer.layerName.as_ptr()) };
-
-        println!("\t{:?}", cstr);
-    }
 }
 
 fn get_device_name(phys_device: VkPhysicalDevice) -> String {
