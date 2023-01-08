@@ -7,8 +7,6 @@ trait CheckVkError {
 }
 
 pub struct State {
-    instance: vk::Instance,
-    device: vk::Device,
     gfx_queue: VkQueue,
     present_queue: VkQueue,
     swapchain: vk::Swapchain,
@@ -18,6 +16,7 @@ pub struct State {
     pipeline: vk::Pipeline,
     framebuffers: Vec<vk::Framebuffer>,
     command_buffers: Vec<vk::CommandBuffer>,
+    command_pool: vk::CommandPool,
     image_available: Vec<vk::Semaphore>,
     render_finished: Vec<vk::Semaphore>,
     is_rendering: Vec<vk::Fence>,
@@ -26,6 +25,10 @@ pub struct State {
     index_count: u32,
     current_frame: usize,
     current_time: f64,
+
+    // Must be last
+    device: vk::Device,
+    instance: vk::Instance,
 }
 
 #[allow(unused)] // False positive
@@ -62,6 +65,7 @@ impl State {
 
         let framebuffers = device.create_framebuffers(&render_pass, &image_views, &swapchain);
         let command_pool = device.create_command_pool(vk::QueueFamily::Graphics);
+        // must ensure that these can't outlive command_pool
         let command_buffers = command_pool.create_command_buffers(MAX_FRAMES_IN_FLIGHT);
         let (image_available, render_finished, is_rendering) = create_sync_objects(&device);
 
@@ -97,6 +101,7 @@ impl State {
             vertex_buffer,
             index_buffer,
             index_count: indices.len().try_into().unwrap(),
+            command_pool,
             command_buffers,
             image_available,
             render_finished,

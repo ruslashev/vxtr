@@ -8,26 +8,21 @@ use std::mem::{size_of, MaybeUninit};
 use std::ptr;
 
 impl CommandPool {
-    pub fn new(device: &Device, queue_family: QueueFamily) -> Self {
+    pub fn new(device: &Device, queue_family_idx: u32) -> Self {
         let create_info = VkCommandPoolCreateInfo {
             sType: VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             flags: VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-            queueFamilyIndex: device.get_idx_of_queue_family(queue_family).unwrap(),
+            queueFamilyIndex: queue_family_idx,
             ..Default::default()
         };
 
         let raw = unsafe {
-            let mut command_pool = MaybeUninit::<VkCommandPool>::uninit();
+            let mut pool = MaybeUninit::<VkCommandPool>::uninit();
 
-            vkCreateCommandPool(
-                device.as_raw(),
-                &create_info,
-                ptr::null(),
-                command_pool.as_mut_ptr(),
-            )
-            .check_err("create command pool");
+            vkCreateCommandPool(device.as_raw(), &create_info, ptr::null(), pool.as_mut_ptr())
+                .check_err("create command pool");
 
-            command_pool.assume_init()
+            pool.assume_init()
         };
 
         Self {

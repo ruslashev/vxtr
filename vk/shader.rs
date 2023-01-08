@@ -3,15 +3,15 @@ use glfw_sys::*;
 use crate::utils::CheckVkError;
 use crate::{Device, Shader, ShaderType};
 
-use std::ffi::CString;
+use std::ffi::CStr;
 use std::mem::MaybeUninit;
 use std::ptr;
 
 impl Shader {
     pub fn from_bytes(device: &Device, compiled: &[u8], sh_type: ShaderType) -> Self {
         let module = create_shader_module(device.as_raw(), compiled);
-        let entrypoint = CString::new("main").unwrap();
-        let stage_info = create_shader_stage_info(module, sh_type, &entrypoint);
+        let entrypoint = CStr::from_bytes_with_nul(b"main\0").unwrap();
+        let stage_info = create_shader_stage_info(module, sh_type, entrypoint);
 
         Self {
             module,
@@ -68,7 +68,7 @@ fn pack_to_u32s(bytes: &[u8]) -> Vec<u32> {
 fn create_shader_stage_info(
     shader_module: VkShaderModule,
     sh_type: ShaderType,
-    entrypoint: &CString,
+    entrypoint: &CStr,
 ) -> VkPipelineShaderStageCreateInfo {
     let stage = match &sh_type {
         ShaderType::Vertex => VK_SHADER_STAGE_VERTEX_BIT,

@@ -22,21 +22,6 @@ impl Device {
         }
     }
 
-    pub fn as_raw(&self) -> VkDevice {
-        self.device
-    }
-
-    pub fn get_idx_of_queue_family(&self, queue_family: QueueFamily) -> Option<u32> {
-        match queue_family {
-            QueueFamily::Graphics => self.queue_families.graphics,
-            QueueFamily::Compute => self.queue_families.compute,
-            QueueFamily::Transfer => self.queue_families.transfer,
-            QueueFamily::SparseBinding => self.queue_families.sparse_binding,
-            QueueFamily::Protected => self.queue_families.protected,
-            QueueFamily::Present => self.queue_families.present,
-        }
-    }
-
     pub fn get_queue(&self, queue_family: QueueFamily) -> Option<VkQueue> {
         let family_idx = self.get_idx_of_queue_family(queue_family)?;
 
@@ -103,7 +88,7 @@ impl Device {
     }
 
     pub fn create_command_pool(&self, queue_family: QueueFamily) -> CommandPool {
-        CommandPool::new(self, queue_family)
+        CommandPool::new(self, self.get_idx_of_queue_family(queue_family).unwrap())
     }
 
     pub fn create_semaphore(&self) -> Semaphore {
@@ -131,6 +116,21 @@ impl Device {
     pub fn wait_idle(&self) {
         unsafe {
             vkDeviceWaitIdle(self.device);
+        }
+    }
+
+    pub fn as_raw(&self) -> VkDevice {
+        self.device
+    }
+
+    fn get_idx_of_queue_family(&self, queue_family: QueueFamily) -> Option<u32> {
+        match queue_family {
+            QueueFamily::Graphics => self.queue_families.graphics,
+            QueueFamily::Compute => self.queue_families.compute,
+            QueueFamily::Transfer => self.queue_families.transfer,
+            QueueFamily::SparseBinding => self.queue_families.sparse_binding,
+            QueueFamily::Protected => self.queue_families.protected,
+            QueueFamily::Present => self.queue_families.present,
         }
     }
 }
@@ -503,7 +503,8 @@ fn create_logical_device(
     phys_device: VkPhysicalDevice,
     queue_families: &QueueFamilies,
 ) -> VkDevice {
-    let queue_create_infos = get_queue_create_infos(queue_families);
+    let queue_priority = 1.0;
+    let queue_create_infos = get_queue_create_infos(queue_families, &queue_priority);
 
     let enabled_features = VkPhysicalDeviceFeatures::default();
 
@@ -538,25 +539,23 @@ fn create_logical_device(
     }
 }
 
-fn get_queue_create_infos(queue_families: &QueueFamilies) -> Vec<VkDeviceQueueCreateInfo> {
+fn get_queue_create_infos(
+    families: &QueueFamilies,
+    priority: &f32,
+) -> Vec<VkDeviceQueueCreateInfo> {
     let mut queue_create_infos = Vec::new();
 
-    let mut unique_families = vec![
-        queue_families.graphics.unwrap(),
-        queue_families.present.unwrap(),
-    ];
+    let mut unique_families = vec![families.graphics.unwrap(), families.present.unwrap()];
 
     unique_families.sort_unstable();
     unique_families.dedup();
 
     for queue_family in unique_families {
-        let priority = 1.0;
-
         let create_info = VkDeviceQueueCreateInfo {
             sType: VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
             queueFamilyIndex: queue_family,
             queueCount: 1,
-            pQueuePriorities: &priority,
+            pQueuePriorities: priority,
             ..Default::default()
         };
 
