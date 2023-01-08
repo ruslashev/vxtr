@@ -23,6 +23,9 @@ run: $(BIN)
 valgrind: $(BIN)
 	valgrind --leak-check=full $(BIN)
 
+gdb: $(BIN)
+	gdb $(BIN) -ex run
+
 shaders: $(BUILT_SHADERS)
 
 all: $(BIN)
