@@ -7,8 +7,8 @@ trait CheckVkError {
 }
 
 pub struct State {
-    gfx_queue: VkQueue,
-    present_queue: VkQueue,
+    gfx_queue: vk::Queue,
+    present_queue: vk::Queue,
     swapchain: vk::Swapchain,
     image_views: Vec<vk::ImageView>,
     render_pass: vk::RenderPass,
@@ -73,7 +73,7 @@ impl State {
 
         let vertex_buffer = device.create_buffer_with_data(
             &command_pool,
-            gfx_queue,
+            &gfx_queue,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
             &vertices,
         );
@@ -82,7 +82,7 @@ impl State {
 
         let index_buffer = device.create_buffer_with_data(
             &command_pool,
-            gfx_queue,
+            &gfx_queue,
             VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
             &indices,
         );
@@ -138,47 +138,19 @@ impl State {
 
         self.record_commands_to_buffer(image_index as usize);
 
-        let wait_semaphores = [self.image_available[self.current_frame].as_raw()];
-        let wait_stages = [VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT];
-        let signal_semaphores = [self.render_finished[self.current_frame].as_raw()];
+        self.gfx_queue.submit_wait(
+            &self.command_buffers[self.current_frame],
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            &self.image_available[self.current_frame],
+            &self.render_finished[self.current_frame],
+            &self.is_rendering[self.current_frame],
+        );
 
-        let submit_info = VkSubmitInfo {
-            sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            waitSemaphoreCount: 1,
-            pWaitSemaphores: wait_semaphores.as_ptr(),
-            pWaitDstStageMask: wait_stages.as_ptr(),
-            commandBufferCount: 1,
-            pCommandBuffers: &self.command_buffers[self.current_frame].as_raw(),
-            signalSemaphoreCount: 1,
-            pSignalSemaphores: signal_semaphores.as_ptr(),
-            ..Default::default()
-        };
-
-        unsafe {
-            vkQueueSubmit(
-                self.gfx_queue,
-                1,
-                &submit_info,
-                self.is_rendering[self.current_frame].as_raw(),
-            )
-            .check_err("submit to draw queue");
-        }
-
-        let swapchains = [self.swapchain.as_raw()];
-
-        let present_info = VkPresentInfoKHR {
-            sType: VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            waitSemaphoreCount: 1,
-            pWaitSemaphores: signal_semaphores.as_ptr(),
-            swapchainCount: 1,
-            pSwapchains: swapchains.as_ptr(),
-            pImageIndices: &image_index,
-            ..Default::default()
-        };
-
-        unsafe {
-            vkQueuePresentKHR(self.present_queue, &present_info);
-        }
+        self.present_queue.present(
+            &self.render_finished[self.current_frame],
+            &self.swapchain,
+            image_index,
+        );
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
     }

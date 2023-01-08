@@ -12,6 +12,7 @@ mod command;
 mod device;
 mod instance;
 mod pipeline;
+mod queue;
 mod render_pass;
 mod shader;
 mod swapchain;
@@ -30,6 +31,10 @@ pub struct Device {
     device: VkDevice,
     queue_families: QueueFamilies,
     swapchain_support: SwapchainSupport,
+}
+
+pub struct Queue {
+    raw: VkQueue,
 }
 
 pub struct Swapchain {

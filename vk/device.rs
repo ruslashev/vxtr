@@ -22,19 +22,10 @@ impl Device {
         }
     }
 
-    pub fn get_queue(&self, queue_family: QueueFamily) -> Option<VkQueue> {
+    pub fn get_queue(&self, queue_family: QueueFamily) -> Option<Queue> {
         let family_idx = self.get_idx_of_queue_family(queue_family)?;
 
-        Some(self.get_queue_for_family_idx(family_idx))
-    }
-
-    fn get_queue_for_family_idx(&self, family_idx: u32) -> VkQueue {
-        let mut queue = MaybeUninit::<VkQueue>::uninit();
-
-        unsafe {
-            vkGetDeviceQueue(self.device, family_idx, 0, queue.as_mut_ptr());
-            queue.assume_init()
-        }
+        Some(Queue::new(self, family_idx))
     }
 
     pub fn create_swapchain(&self, instance: &Instance, verbose: bool) -> Swapchain {
@@ -106,7 +97,7 @@ impl Device {
     pub fn create_buffer_with_data<T: Copy>(
         &self,
         command_pool: &CommandPool,
-        queue: VkQueue,
+        queue: &Queue,
         usage: u32,
         data: &[T],
     ) -> Buffer {

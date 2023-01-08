@@ -1,7 +1,7 @@
 use glfw_sys::*;
 
 use crate::utils::CheckVkError;
-use crate::{Buffer, CommandPool, Device};
+use crate::{Buffer, CommandPool, Device, Queue};
 
 use std::ffi::c_void;
 use std::mem::{size_of, MaybeUninit};
@@ -64,7 +64,7 @@ impl Buffer {
     pub fn with_data<T: Copy>(
         device: &Device,
         command_pool: &CommandPool,
-        queue: VkQueue,
+        queue: &Queue,
         usage: u32,
         data: &[T],
     ) -> Self {
@@ -124,7 +124,7 @@ impl Buffer {
     pub fn copy_from_buffer(
         &mut self,
         command_pool: &CommandPool,
-        queue: VkQueue,
+        queue: &Queue,
         src: &Buffer,
         size: u64,
     ) {
@@ -134,12 +134,9 @@ impl Buffer {
             handle.copy_buffer_full(&src, self, size);
         });
 
-        let submit_info = cmd_buffer.to_submit_info();
+        queue.submit(&cmd_buffer);
 
-        unsafe {
-            vkQueueSubmit(queue, 1, &submit_info, ptr::null_mut());
-            vkQueueWaitIdle(queue);
-        }
+        queue.wait_idle();
     }
 }
 

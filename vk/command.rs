@@ -131,15 +131,6 @@ impl CommandBuffer {
         self.record_with_flags(0, closure);
     }
 
-    pub fn to_submit_info(&self) -> VkSubmitInfo {
-        VkSubmitInfo {
-            sType: VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            commandBufferCount: 1,
-            pCommandBuffers: &self.raw,
-            ..Default::default()
-        }
-    }
-
     pub fn as_raw(&self) -> VkCommandBuffer {
         self.raw
     }
