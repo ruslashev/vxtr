@@ -42,7 +42,7 @@ impl Instance {
         let mut extension_count = 0;
         let extension_names = unsafe { glfwGetRequiredInstanceExtensions(&mut extension_count) };
 
-        print_extensions(extension_count, extension_names);
+        print_required_extensions(extension_count, extension_names);
 
         let mut create_info = VkInstanceCreateInfo {
             sType: VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
@@ -104,8 +104,8 @@ fn make_vk_api_version(variant: u32, major: u32, minor: u32, patch: u32) -> u32 
     (variant << 29) | (major << 22) | (minor << 12) | patch
 }
 
-fn print_extensions(count: u32, names: *mut *const c_char) {
-    println!("Extensions:");
+fn print_required_extensions(count: u32, names: *mut *const c_char) {
+    println!("Required extensions:");
 
     for i in 0..count {
         let cstr = unsafe {
